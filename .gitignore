@@ -1,0 +1,11 @@
+# Secrets Zoho (NE JAMAIS PUSHER)
+zoho_config.py
+.zoho_token_cache.json
+
+# Environnement virtuel Python
+venv/
+__pycache__/
+*.pyc
+
+# Fichiers générés
+registre_2026.csv
