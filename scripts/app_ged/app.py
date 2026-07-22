@@ -1,31 +1,46 @@
 import os
 import csv
+import json
 import webbrowser
-from flask import Flask, render_template, request, redirect, url_for, flash
+import threading
+import time
 import sys
+import re
+import logging
+import traceback
 from pathlib import Path
+from flask import Flask, render_template, request, redirect, url_for, flash
 
-# Définition du dossier racine du projet (wakati-zoho)
+# ==========================================
+# CONFIGURATION DES CHEMINS ET LOGS
+# ==========================================
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-
-# Importation de votre connecteur depuis le dossier racine
 sys.path.insert(0, str(ROOT_DIR))
 
+TEMP_DIR = Path(__file__).resolve().parent / "_tmp"
+TEMP_DIR.mkdir(exist_ok=True)
+
+logging.basicConfig(
+    filename=str(ROOT_DIR / "ged_rh_errors.log"),
+    level=logging.ERROR,
+    encoding='utf-8'
+)
+
+# ==========================================
+# IMPORTATION DU CONNECTEUR ZOHO
+# ==========================================
 from zoho_connector import ZohoConnector
 z = ZohoConnector()
 
+# ==========================================
+# CONFIGURATION FLASK & ARBORESCENCE
+# ==========================================
 app = Flask(__name__)
 app.secret_key = "wakati_ged_rh_secret"
 
-# Configuration
-DOSSIERS_ZOHO = {
-    "entrant": "avajid1a38194ab8f48baa462286eef5a1315",
-    "sortant": "5wh2ha7a8ad89bbac457a90d68d9d4d175f97"
-}
-# Le registre sera sauvegardé à la racine du projet, pas dans un dossier système
+MAP_FILE = ROOT_DIR / "folders_map.json"
 FICHIER_REGISTRE = ROOT_DIR / "registre_2026.csv"
 
-# Paramètres Admin (Services, Types, Iles)
 SERVICES = {
     "FIN": "Finances", "RH": "Ressources Humaines", "DGA": "Direction / Admin",
     "JUR": "Juridique", "COM": "Commercial", "EXP": "Exploitation"
@@ -33,81 +48,117 @@ SERVICES = {
 TYPES = {
     "FAC": "Facture", "CNT": "Contrat", "NOT": "Note de service", "VIR": "Virement",
     "DEM": "Demande", "ODM": "Ordre de mission", "ETA": "État / Relevé", "ACC": "Accord",
-    "ATT": "Attestation", "BOR": "Bordereau", "COR": "Courrier", "PV": "Procès-verbal", "DOC": "Document divers"
+    "ATT": "Attestation", "BOR": "Bordereau", "CENT": "Courrier Entrant", "CSOR": "Courrier Sortant", 
+    "PV": "Procès-verbal", "DOC": "Document divers"
 }
 ILES = {"NGA": "Ngazidja", "ANJ": "Anjouan", "MOH": "Mohéli"}
 
+def get_zoho_folder_id(service_code, type_code):
+    """Lit le fichier JSON pour trouver l'ID du dossier cible exact."""
+    if not MAP_FILE.exists():
+        raise FileNotFoundError("Le fichier folders_map.json est introuvable. Lancez setup_folders.py d'abord.")
+    
+    with open(MAP_FILE, 'r', encoding='utf-8') as f:
+        folder_map = json.load(f)
+        
+    try:
+        return folder_map["services"][service_code]["types"][type_code]
+    except KeyError:
+        raise ValueError(f"Dossier cible introuvable pour {service_code}/{type_code}.")
+
 def nettoyer_texte(texte):
-    texte = texte.upper().replace(" ", "_").replace("é", "e").replace("è", "e").replace("à", "a")
-    for char in ['/', '\\', '?', '%', '*', ':', '|', '"', '<', '>', '.', ',', ';', "'"]:
-        texte = texte.replace(char, "")
-    return texte
+    if not texte:
+        return "SANS_OBJET"
+    texte = texte.upper()
+    replacements = {'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E', 'À': 'A', 'Â': 'A', 
+                    'Ä': 'A', 'Ô': 'O', 'Ö': 'O', 'Î': 'I', 'Ï': 'I', 'Ç': 'C', 
+                    'Ù': 'U', 'Ú': 'U', 'Û': 'U', 'Ü': 'U', '’': "'", "'": "'"}
+    for char, repl in replacements.items():
+        texte = texte.replace(char, repl)
+    texte = texte.replace(" ", "_")
+    texte = re.sub(r"[^A-Z0-9_\-]", "", texte)
+    return texte[:60]
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         fichier = request.files['pdf']
-        sens = request.form['sens']
         service = request.form['service']
         type_doc = request.form['type_doc']
-        date_doc = request.form['date_doc'] # AAAA-MM-JJ
-        num_ordre = request.form['num_ordre'].zfill(3) # Force 001
+        date_doc = request.form['date_doc']
+        num_ordre = request.form['num_ordre'].zfill(3)
         objet = request.form['objet']
         ile = request.form.get('ile', '')
 
-        if not fichier:
+        if not fichier or fichier.filename == '':
             flash("Veuillez sélectionner un fichier PDF.", "error")
             return redirect(url_for('index'))
 
-        # 1. Génération du nom HM26
         objet_nettoye = nettoyer_texte(objet)
         date_sans_tirets = date_doc.replace("-", "")
         nouveau_nom = f"HM26-{service}-{type_doc}_{date_sans_tirets}_{num_ordre}_{objet_nettoye}.pdf"
         
-        # 2. Sauvegarde temporaire et Upload Zoho
-        chemin_temp = nouveau_nom
-        fichier.save(chemin_temp)
+        chemin_temp = TEMP_DIR / nouveau_nom
+        fichier.save(str(chemin_temp))
         
         try:
-            dossier_id = DOSSIERS_ZOHO[sens]
-            resp = z.workdrive_upload(chemin_temp, dossier_id)
-            file_data = resp.get('data', {})
-            attrs = file_data.get('attributes', {})
-            permalink = attrs.get('permalink', 'Lien non disponible')
+            # Forcer un token frais (sécurité anti-401)
+            z._refresh_access_token()
             
-            # 3. Ajout au registre CSV
+            # Utilisation du mapping JSON
+            dossier_id = get_zoho_folder_id(service, type_doc)
+            
+            resp = z.workdrive_upload(str(chemin_temp), dossier_id)
+            
+            data_list = resp.get('data', [])
+            if isinstance(data_list, list) and len(data_list) > 0:
+                attrs = data_list[0].get('attributes', {})
+                permalink = attrs.get('permalink', 'Lien non disponible')
+            else:
+                permalink = 'Lien non disponible'
+            
             with open(FICHIER_REGISTRE, mode='a', encoding='utf-8-sig', newline='') as f:
                 writer = csv.writer(f, delimiter=';')
-                writer.writerow([nouveau_nom, SERVICES[service], TYPES[type_doc], date_doc, ILES.get(ile, ''), objet, 'Courriers', 'Zoho WorkDrive', 'Classé', permalink])
+                writer.writerow([
+                    nouveau_nom, SERVICES[service], TYPES[type_doc], date_doc, 
+                    ILES.get(ile, ''), objet, 'Courriers', 'Zoho WorkDrive', 'Classé', permalink
+                ])
             
-            flash(f"✅ Succès ! Le fichier a été classé sous le nom : {nouveau_nom}", "success")
+            flash(f"✅ Succès ! Classé dans {SERVICES[service]} > {TYPES[type_doc]} : {nouveau_nom}", "success")
             
         except Exception as e:
-            flash(f"❌ Erreur lors de l'upload Zoho : {str(e)[:100]}", "error")
+            logging.error("Échec upload Zoho pour %s\n%s", nouveau_nom, traceback.format_exc())
+            flash(f"❌ Erreur lors de l'upload Zoho : {repr(e)}", "error")
+            
         finally:
-            if os.path.exists(chemin_temp):
-                os.remove(chemin_temp)
+            try:
+                if chemin_temp.exists():
+                    chemin_temp.unlink()
+            except Exception:
+                pass
                 
         return redirect(url_for('index'))
 
-    # Lecture du registre pour l'afficher (du plus récent au plus ancien)
     registre = []
     if os.path.exists(FICHIER_REGISTRE):
         with open(FICHIER_REGISTRE, mode='r', encoding='utf-8-sig') as f:
             reader = csv.reader(f, delimiter=';')
-            registre = list(reversed(list(reader))) # Inversé pour voir le dernier en haut
+            lignes = list(reader)
+            if len(lignes) > 1:
+                # Affiche les 10 derniers uniquement
+                registre = list(reversed(lignes[1:]))[:10]
 
     return render_template('index.html', registre=registre, services=SERVICES, types=TYPES, iles=ILES)
 
+def ouvrir_navigateur():
+    time.sleep(1.5)
+    webbrowser.open("http://127.0.0.1:5000")
+
 if __name__ == '__main__':
-    # On crée le fichier s'il n'existe pas avec ses en-têtes
     if not os.path.exists(FICHIER_REGISTRE):
         with open(FICHIER_REGISTRE, mode='w', encoding='utf-8-sig', newline='') as f:
             writer = csv.writer(f, delimiter=';')
             writer.writerow(['Nom du fichier', 'Service', 'Type', 'Date', 'Île', 'Objet', 'Branche GED', 'Emplacement physique', 'Statut', 'Lien Zoho'])
     
-    # Ouverture automatique du navigateur par défaut
-    webbrowser.open("http://127.0.0.1:5000")
-    
-    # Lancement de l'app (debug=False pour éviter que le navigateur ne s'ouvre deux fois)
+    threading.Thread(target=ouvrir_navigateur, daemon=True).start()
     app.run(debug=False, port=5000)

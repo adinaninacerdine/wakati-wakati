@@ -1,0 +1,118 @@
+{
+    "services": {
+        "FIN": {
+            "id": "7rxexc6745938c7ee498baf78b9a4c6a85620",
+            "types": {
+                "FAC": "7rxexed479e59beab479ba66574a2ca3aa69e",
+                "CNT": "7rxexe177e4d93ebe4e77b97fbcb5ba63e0ae",
+                "NOT": "7rxex2a1f72365bf44045aeff8fd1ae9f2de7",
+                "VIR": "7rxex9d3e1feae25d4ab49170e7642dc54006",
+                "DEM": "7rxexb795b1db8ac0458ea8b018dd074a41b4",
+                "ODM": "7rxex99e42d65485345aaad1aad8338bb3ca8",
+                "ETA": "7rxex5345f3af7b3b457ea87f3ae89c39225c",
+                "ACC": "7rxex9ab2f8df0fcc47e28355d499cfc02882",
+                "ATT": "7rxex21314945bd24443690601e8ff99090bd",
+                "BOR": "7rxexc2964d31b0dc4674a2a4dc6595dbb084",
+                "CENT": "7rxex22eb736e104749f58b00f8512aa7f508",
+                "CSOR": "7rxexf06998b1ae2d45d496eb5e6396947c4c",
+                "PV": "7rxex700fc61c5c9549f2b0a42d169bfc26e0",
+                "DOC": "7rxex37f48d04b29d41b29cc04ba12d98d412"
+            }
+        },
+        "RH": {
+            "id": "7rxexae93da7a4fb54520a185082850669f3d",
+            "types": {
+                "FAC": "7rxex3f7d07e0e0bb4ff2924db1904e31a9bd",
+                "CNT": "7rxex10841bc7d05547638d4035a8bcc1a691",
+                "NOT": "7rxex7cf70b20749043b4a867154da03e0f3b",
+                "VIR": "7rxexaab6bb0a22544ff7a1ee9ced9f22ea0d",
+                "DEM": "7rxexcc68bbda7c0b4279b388387b96f88218",
+                "ODM": "7rxexaeb622def5744a1a95d03e434cf04c2e",
+                "ETA": "7rxexaae5d1608478429aae4b34bd46da2818",
+                "ACC": "7rxexc212e76bdb3742ec9bcf59a03e6d7618",
+                "ATT": "7rxex44b1b9c4d1dc4e618d5ebb9124cb1266",
+                "BOR": "7rxex9b2368089be84c71896150f7a7693c10",
+                "CENT": "7rxex68efead90942457b890c01325553e2dc",
+                "CSOR": "7rxex6660facc59fb46469899aa68f7cf6bc3",
+                "PV": "7rxexe4ce021f115d4102bae682139e871b65",
+                "DOC": "7rxexce4c7ff4941a4f56a58b00d7c41ebc1e"
+            }
+        },
+        "DGA": {
+            "id": "7rxex403b01e7527a4ba99120de9858cecec3",
+            "types": {
+                "FAC": "7rxexb61d78ac68994182a8d03f7f469c5910",
+                "CNT": "7rxex3e364a1194b94215983b8fd00fdd2701",
+                "NOT": "7rxex0cd934d050c1432ab4d1042a42b28129",
+                "VIR": "7rxexe84f3c7721a6476ea0aa379e7510f450",
+                "DEM": "7rxex6c347803d4684ffca475d1ed14cda84a",
+                "ODM": "7rxexfa3cf1cb2c704e1eb856c8b42bc89292",
+                "ETA": "7rxex37e87caed296463695e10e2817971883",
+                "ACC": "7rxexabc99f7efb434c22a88a11338ff3437c",
+                "ATT": "7rxexfc5670db116149d2a471093badb60327",
+                "BOR": "7rxex30e13c841d2248ae8fdc16b12e01a376",
+                "CENT": "7rxexd4e7a333638640d7a4080e02384491de",
+                "CSOR": "7rxexd93e827386774c6da43e7e16b1686353",
+                "PV": "7rxex6623ffedd0b042d7b26ed2463968a83d",
+                "DOC": "7rxexc731ff9012d349258bfd084386509b32"
+            }
+        },
+        "JUR": {
+            "id": "7rxex3ac94540cccc44b6a7fbed4778025162",
+            "types": {
+                "FAC": "7rxex50b9c9c7a65f4d7fb8d26aa36de11e95",
+                "CNT": "7rxexdd0c40c38d40421a9b71c6f90e8f1027",
+                "NOT": "7rxex88d20f0c47494f24989c83e274bb1481",
+                "VIR": "7rxex607dec8211764e7a897610ea9021a6e9",
+                "DEM": "7rxex4eb6b5ca7ff2441eacdd2fb0ee18c21d",
+                "ODM": "7rxex96286adf09cf48fd875a70c658554650",
+                "ETA": "7rxexac50451ab042413a8cb01c30232cd79a",
+                "ACC": "7rxexda75008017744b4f9f58a83d77ff0fc6",
+                "ATT": "7rxexe9c1072bd9e042b587bdf20d25adddc1",
+                "BOR": "7rxexe6c8c98f91d4473488d78c1b95682dee",
+                "CENT": "7rxexaf9b4676d7d148b88f2b6e567771db62",
+                "CSOR": "7rxex0375ea3c71ae4feaa504de77805bbea3",
+                "PV": "7rxexb395887c57d84178a7beb9f2f0cab419",
+                "DOC": "7rxex2eb7925db77a46aeb1d9b80d65247ef5"
+            }
+        },
+        "COM": {
+            "id": "7rxex0a33b6e623374dfab19ffa00a29973b5",
+            "types": {
+                "FAC": "7rxexc12100e8785d4ae699115d21615e6348",
+                "CNT": "7rxex99aa0e367fc34bdf8f0ffbd4eb49cf55",
+                "NOT": "7rxex8f29ad8c9148439e94e33fa7d4814873",
+                "VIR": "7rxex756dbedb83bc4270a6cc8c8ee621a88d",
+                "DEM": "7rxex1eccaf252598440caadfe1f96ce1ed96",
+                "ODM": "7rxex63c10685cf23451fa591184dfc55df39",
+                "ETA": "7rxex29809ae88fd24f2f8b6da88f26d13af3",
+                "ACC": "7rxex77c3c5cab48647219b862bc0f753a3cd",
+                "ATT": "7rxex4a152a07c0e74b71b96f7ecd5c76e328",
+                "BOR": "7rxexed103d161f5e4dc6ab70cd1acb63a344",
+                "CENT": "7rxex2e06080b1d794c428f1eee272378f7f8",
+                "CSOR": "7rxex1b7151fac8334b32b3e4238f67a552e6",
+                "PV": "7rxex096f5ae6dc4540518036c9aeadd4ab3b",
+                "DOC": "7rxex655e72cfb7834611a5a1c7ce68df6a6a"
+            }
+        },
+        "EXP": {
+            "id": "7rxexe3b12d2bba544e94810b1787e7eda0f1",
+            "types": {
+                "FAC": "7rxex7b77441f76d44f4d9bfab901fbffe3c4",
+                "CNT": "7rxex50d453dcfe09439a90a162c8ed969256",
+                "NOT": "7rxex39f6b41d1d8a4936a6b6b3520496f1cc",
+                "VIR": "7rxex391d6b1a05874ce4bc8fa3317a4e75ed",
+                "DEM": "7rxexcc96ffa9c829460c94ba0ed2bff705d0",
+                "ODM": "7rxexa280c44e1290498fb64c90a0aa38257c",
+                "ETA": "7rxex398248c928fb42049bb350a51adbfa2f",
+                "ACC": "7rxexdd8d4d7ba03d4f10a65abd83953e52dd",
+                "ATT": "7rxex4d188dd07a3b428da7d7eff9811b6349",
+                "BOR": "7rxex30768460f52b4ee7962c4dd6b4605dac",
+                "CENT": "7rxex7788ff2578b04de1a63fc45da815c070",
+                "CSOR": "7rxex9255c5786ddf4ff8955bc5299b928dad",
+                "PV": "7rxex6bf5fa92d8174e709ad8f16176c679fb",
+                "DOC": "7rxex4b601ba2d89e47cdb2327af3118615af"
+            }
+        }
+    }
+}

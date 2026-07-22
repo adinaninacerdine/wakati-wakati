@@ -1,0 +1,58 @@
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 15:43:32] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 15:44:14] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 15:44:14] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:01:58] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:07:26] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec upload Zoho pour HM26-DGA-CENT_20220721_001_TEST.pdf
+Traceback (most recent call last):
+  File "C:\Dev\wakati-wakati\scripts\app_ged\app.py", line 118, in index
+    resp = z.workdrive_upload(str(chemin_temp), dossier_id)
+  File "C:\Dev\wakati-wakati\zoho_connector.py", line 123, in workdrive_upload
+    resp.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Dev\wakati-wakati\venv\Lib\site-packages\requests\models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error:  for url: https://www.zohoapis.com/workdrive/api/v1/upload
+
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:08:16] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:08:16] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:09:14] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec upload Zoho pour HM26-DGA-CENT_20220721_001_TEST.pdf
+Traceback (most recent call last):
+  File "C:\Dev\wakati-wakati\scripts\app_ged\app.py", line 118, in index
+    resp = z.workdrive_upload(str(chemin_temp), dossier_id)
+  File "C:\Dev\wakati-wakati\zoho_connector.py", line 123, in workdrive_upload
+    resp.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Dev\wakati-wakati\venv\Lib\site-packages\requests\models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error:  for url: https://www.zohoapis.com/workdrive/api/v1/upload
+
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:09:56] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:09:56] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:14:15] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec upload Zoho pour HM26-RH-CENT_20260721_001_TEST.pdf
+Traceback (most recent call last):
+  File "C:\Dev\wakati-wakati\scripts\app_ged\app.py", line 117, in index
+    resp = z.workdrive_upload(str(chemin_temp), dossier_id)
+  File "C:\Dev\wakati-wakati\zoho_connector.py", line 123, in workdrive_upload
+    resp.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Dev\wakati-wakati\venv\Lib\site-packages\requests\models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error:  for url: https://www.zohoapis.com/workdrive/api/v1/upload
+
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:14:55] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:14:55] "GET / HTTP/1.1" 200 -
