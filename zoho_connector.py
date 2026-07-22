@@ -123,6 +123,19 @@ class ZohoConnector:
         resp.raise_for_status()
         return resp.json()
 
+# --------------------------------------------------------
+# ZOHO SHEET
+# --------------------------------------------------------
+def sheet_append_row(self, workbook_id, worksheet_id, row_data):
+    """Ajoute une ligne à la fin d'une feuille Zoho Sheet."""
+    url = f"https://www.zohoapis.com/sheet/api/v2/workbooks/{workbook_id}/worksheets/{worksheet_id}/content"
+    payload = {
+        "is_append": True,
+        "content": [row_data] # row_data doit être une liste ex: ["nom", "service", ...]
+    }
+    resp = requests.post(url, headers=self._headers({'Content-Type': 'application/json'}), json=payload)
+    resp.raise_for_status()
+    return resp.json()
 
 # ============================================================
 # HELPER : obtenir le refresh_token (à lancer UNE FOIS)

@@ -56,3 +56,9 @@ requests.exceptions.HTTPError: 401 Client Error:  for url: https://www.zohoapis.
 
 INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:14:55] "[32mPOST / HTTP/1.1[0m" 302 -
 INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:14:55] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:27:34] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:28:17] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:28:17] "GET / HTTP/1.1" 200 -

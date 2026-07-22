@@ -41,6 +41,10 @@ app.secret_key = "wakati_ged_rh_secret"
 MAP_FILE = ROOT_DIR / "folders_map.json"
 FICHIER_REGISTRE = ROOT_DIR / "registre_2026.csv"
 
+# Configuration Zoho Sheet (Extrait de votre lien Zoho Sheet)
+ZOHO_SHEET_WORKBOOK_ID = "avaji4d47ec1cbffc4f5184dc8b3127b83ae7"
+ZOHO_SHEET_WORKSHEET_ID = "3" # Le sheetid=3 à la fin de votre lien
+
 SERVICES = {
     "FIN": "Finances", "RH": "Ressources Humaines", "DGA": "Direction / Admin",
     "JUR": "Juridique", "COM": "Commercial", "EXP": "Exploitation"
@@ -108,6 +112,7 @@ def index():
             # Utilisation du mapping JSON
             dossier_id = get_zoho_folder_id(service, type_doc)
             
+            # Upload Zoho WorkDrive
             resp = z.workdrive_upload(str(chemin_temp), dossier_id)
             
             data_list = resp.get('data', [])
@@ -117,12 +122,23 @@ def index():
             else:
                 permalink = 'Lien non disponible'
             
+            # Préparation des données de la ligne
+            row_data = [
+                nouveau_nom, SERVICES[service], TYPES[type_doc], date_doc, 
+                ILES.get(ile, ''), objet, 'Courriers', 'Zoho WorkDrive', 'Classé', permalink
+            ]
+
+            # 1. Ajout au registre CSV local
             with open(FICHIER_REGISTRE, mode='a', encoding='utf-8-sig', newline='') as f:
                 writer = csv.writer(f, delimiter=';')
-                writer.writerow([
-                    nouveau_nom, SERVICES[service], TYPES[type_doc], date_doc, 
-                    ILES.get(ile, ''), objet, 'Courriers', 'Zoho WorkDrive', 'Classé', permalink
-                ])
+                writer.writerow(row_data)
+            
+            # 2. Envoi vers Zoho Sheet en ligne
+            try:
+                z.sheet_append_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, row_data)
+            except Exception as sheet_err:
+                # On log l'erreur mais on ne bloque pas l'application
+                logging.error("Échec envoi Zoho Sheet pour %s\n%s", nouveau_nom, traceback.format_exc())
             
             flash(f"✅ Succès ! Classé dans {SERVICES[service]} > {TYPES[type_doc]} : {nouveau_nom}", "success")
             
@@ -139,6 +155,7 @@ def index():
                 
         return redirect(url_for('index'))
 
+    # Lecture du registre local
     registre = []
     if os.path.exists(FICHIER_REGISTRE):
         with open(FICHIER_REGISTRE, mode='r', encoding='utf-8-sig') as f:
@@ -161,4 +178,4 @@ if __name__ == '__main__':
             writer.writerow(['Nom du fichier', 'Service', 'Type', 'Date', 'Île', 'Objet', 'Branche GED', 'Emplacement physique', 'Statut', 'Lien Zoho'])
     
     threading.Thread(target=ouvrir_navigateur, daemon=True).start()
-    app.run(debug=False, port=5000)
+    app.run(debug=False, port=5000)s
