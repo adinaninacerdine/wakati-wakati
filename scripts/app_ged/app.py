@@ -17,8 +17,20 @@ from flask import Flask, render_template, request, redirect, url_for, flash
 CURRENT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = CURRENT_DIR.parent.parent
 
+# On ajoute TOUT les chemins possibles pour être sûr que Python trouve les fichiers
 sys.path.insert(0, str(ROOT_DIR))
+sys.path.insert(0, str(CURRENT_DIR))
 sys.path.insert(0, os.getcwd())
+
+# On force la lecture du fichier de config AVANT d'importer le connecteur
+try:
+    import zoho_config
+    # On l'injecte dans le système pour que le connecteur le trouve
+    sys.modules['zoho_config'] = zoho_config
+except ImportError:
+    print("ERREUR CRITIQUE : zoho_config.py est introuvable.")
+    print(f"Chemin recherché : {ROOT_DIR}")
+    sys.exit(1)
 
 TEMP_DIR = CURRENT_DIR / "_tmp"
 TEMP_DIR.mkdir(exist_ok=True)
@@ -46,7 +58,7 @@ MAP_FILE = ROOT_DIR / "folders_map.json"
 FICHIER_REGISTRE = ROOT_DIR / "registre_2026.csv"
 
 ZOHO_SHEET_WORKBOOK_ID = "avaji4d47ec1cbffc4f5184dc8b3127b83ae7"
-ZOHO_SHEET_WORKSHEET_ID = "3" 
+ZOHO_SHEET_WORKSHEET_ID = "Registre 2026" 
 
 DOSSIERS_ZOHO_DEFAUT = {
     "entrant": "avajid1a38194ab8f48baa462286eef5a1315",
@@ -126,9 +138,6 @@ def index():
                 data = data[0]
                 
             attrs = data.get('attributes', {})
-            
-            # --- CORRECTION DU LIEN ICI ---
-            # Zoho renvoie 'Permalink' (avec une majuscule) ou 'permalink'
             permalink = attrs.get('Permalink', attrs.get('permalink', ''))
             file_id = attrs.get('resource_id', attrs.get('id', ''))
             
