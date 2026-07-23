@@ -62,3 +62,158 @@ INFO:werkzeug:[33mPress CTRL+C to quit[0m
 INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:27:34] "GET / HTTP/1.1" 200 -
 INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:28:17] "[32mPOST / HTTP/1.1[0m" 302 -
 INFO:werkzeug:127.0.0.1 - - [22/Jul/2026 16:28:17] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 08:40:25] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec upload Zoho pour HM26-DGA-CENT_20260724_001_TEST3.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 110, in index
+    z._refresh_access_token()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/zoho_connector.py", line 58, in _refresh_access_token
+    raise RuntimeError(f"Echec refresh token : {data}")
+RuntimeError: Echec refresh token : {'error': 'invalid_code'}
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 08:42:12] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 08:42:12] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 09:15:27] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec envoi Zoho Sheet pour HM26-DGA-CENT_20260723_002_TEST4.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 138, in index
+    z.sheet_append_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, row_data)
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: 'ZohoConnector' object has no attribute 'sheet_append_row'
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 09:16:39] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 09:16:39] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 09:20:06] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 09:26:22] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 09:26:25] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 09:26:26] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:26:35] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec upload Zoho pour HM26-DGA-CENT_20260723_008_TEST8.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 110, in index
+    z._refresh_access_token()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/zoho_connector.py", line 58, in _refresh_access_token
+    raise RuntimeError(f"Echec refresh token : {data}")
+RuntimeError: Echec refresh token : {'error': 'general_error'}
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:27:39] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:27:39] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:28:11] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec upload Zoho pour HM26-DGA-CENT_20260723_009_TEST9.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 110, in index
+    z._refresh_access_token()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/zoho_connector.py", line 58, in _refresh_access_token
+    raise RuntimeError(f"Echec refresh token : {data}")
+RuntimeError: Echec refresh token : {'error': 'general_error'}
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:29:12] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:29:12] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:30:30] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec envoi Zoho Sheet pour HM26-DGA-CENT_20260723_009_TEST9.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 138, in index
+    z.sheet_append_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, row_data)
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: 'ZohoConnector' object has no attribute 'sheet_append_row'
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:31:25] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:31:25] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 11:31:37] "[33mGET /Lien%20non%20disponible HTTP/1.1[0m" 404 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:07:15] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:07:24] "[33mGET /Lien%20non%20disponible HTTP/1.1[0m" 404 -
+ERROR:root:Échec envoi Zoho Sheet pour HM26-DGA-CENT_20260723_010_TEST10.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 159, in index
+    z.sheet_add_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, row_data_dict)
+    ^^^^^^^^^^^^^^^
+AttributeError: 'ZohoConnector' object has no attribute 'sheet_add_row'
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:08:19] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:08:19] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:11:15] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:11:22] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:23:14] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec envoi Zoho Sheet pour HM26-DGA-CENT_20260723_011_TEST11.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 175, in index
+    z.sheet_add_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, row_data_dict)
+    ^^^^^^^^^^^^^^^
+AttributeError: 'ZohoConnector' object has no attribute 'sheet_add_row'
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:24:07] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:24:07] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 12:24:19] "[33mGET /Lien%20non%20disponible HTTP/1.1[0m" 404 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:17:39] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec envoi Zoho Sheet pour HM26-DGA-CENT_20260723_012_TEST12.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 168, in index
+    z.sheet_add_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, row_data_dict)
+    ^^^^^^^^^^^^^^^
+AttributeError: 'ZohoConnector' object has no attribute 'sheet_add_row'
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:18:35] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:18:35] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:18:54] "[33mGET /Lien%20non%20disponible HTTP/1.1[0m" 404 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:39:17] "GET / HTTP/1.1" 200 -
+ERROR:root:Échec envoi Zoho Sheet pour HM26-DGA-CENT_20260723_013_TEST13.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 159, in index
+    z.sheet_add_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, row_data_dict)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/zoho_connector.py", line 285, in sheet_add_row
+    resp.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/venv/lib/python3.14/site-packages/requests/models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error:  for url: https://sheet.zoho.com/api/v2/avaji4d47ec1cbffc4f5184dc8b3127b83ae7/worksheets/3/records
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:40:06] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:40:06] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:40:26] "[33mGET /Lien%20non%20disponible HTTP/1.1[0m" 404 -
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:48:38] "GET / HTTP/1.1" 200 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:50:04] "[33mGET /Lien%20non%20disponible HTTP/1.1[0m" 404 -
+ERROR:root:Échec envoi Zoho Sheet pour HM26-DGA-CENT_20260723_014_TST14.pdf
+Traceback (most recent call last):
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/scripts/app_ged/app.py", line 162, in index
+    z.sheet_add_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, row_data_dict)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/zoho_connector.py", line 285, in sheet_add_row
+    resp.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/adinani-nacer-dine/Documents/wakati-wakati/venv/lib/python3.14/site-packages/requests/models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error:  for url: https://sheet.zoho.com/api/v2/avaji4d47ec1cbffc4f5184dc8b3127b83ae7/worksheets/3/records
+
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:50:54] "[32mPOST / HTTP/1.1[0m" 302 -
+INFO:werkzeug:127.0.0.1 - - [23/Jul/2026 15:50:54] "GET / HTTP/1.1" 200 -
