@@ -8,4 +8,17 @@ __pycache__/
 *.pyc
 
 # Fichiers générés
+registre_2026.csvnotifier_config.py
+.cliq_token_cache.json
+
+notifier_config.py
+.cliq_token_cache.json
+.zoho_token_cache.json
+
+zoho_config.py.backup-*
+zoho_config.py.avant-*
+*.backup
+
+ged_rh_errors.log
 registre_2026.csv
+_tmp/
