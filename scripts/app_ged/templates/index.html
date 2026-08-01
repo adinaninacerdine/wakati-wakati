@@ -1,133 +1,425 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>GED WAKATI - Classer un document</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; text-align: center; border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-top: 0; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; color: #34495e; }
-        input[type="text"], input[type="date"], select, input[type="file"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        .row { display: flex; gap: 15px; }
-        .col { flex: 1; }
-        button { background: #3498db; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; margin-top: 10px; }
-        button:hover { background: #2980b9; }
-        .flash { padding: 12px; margin-bottom: 20px; border-radius: 4px; text-align: center; font-weight: bold; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        table { width: 100%; border-collapse: collapse; margin-top: 30px; font-size: 14px; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-        th { background: #2c3e50; color: white; }
-        tr:nth-child(even) { background: #f2f2f2; }
-        a { color: #3498db; text-decoration: none; font-weight: bold; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GED WAKATI</title>
+<style>
+  :root {
+    --navy:      #03224C;
+    --navy-90:   #0A2E5E;
+    --navy-fond: #F2F5F9;
+    --navy-bord: #C9D6E5;
+    --rouge:     #E60E06;
+    --rouge-fond:#FDECEB;
+    --gris:      #5B6B7F;
+    --bord:      #DFE4EA;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Calibri, "Segoe UI", system-ui, sans-serif;
+    background: #F7F8FA; color: #1B2733; margin: 0; line-height: 1.55;
+  }
+
+  /* --- Bandeau --- */
+  .bandeau { background: var(--navy); color: #fff; padding: 18px 0; }
+  .bandeau .in { max-width: 1000px; margin: auto; padding: 0 24px;
+                 display: flex; align-items: center; justify-content: space-between; }
+  .marque { font-family: "Calibri Light", Calibri, sans-serif;
+            font-size: 26px; letter-spacing: 6px; font-weight: 300; }
+  .slogan { color: var(--rouge); font-size: 13px; letter-spacing: 2px; font-weight: 600; }
+  .bandeau .sous { font-size: 13px; color: #A8BCD4; letter-spacing: .5px; }
+
+  .page { max-width: 1000px; margin: 26px auto 60px; padding: 0 24px; }
+
+  /* --- Sections --- */
+  .bloc { background: #fff; border: 1px solid var(--bord);
+          border-radius: 6px; margin-bottom: 22px; overflow: hidden; }
+  .bloc > h2 {
+    font-family: "Calibri Light", Calibri, sans-serif; font-weight: 400;
+    font-size: 17px; color: var(--navy); margin: 0;
+    padding: 14px 22px; border-bottom: 1px solid var(--bord);
+    background: var(--navy-fond);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .bloc > h2 .compte {
+    background: var(--navy); color: #fff; font-family: Calibri, sans-serif;
+    font-size: 12px; font-weight: 700; border-radius: 10px; padding: 1px 9px;
+  }
+  .bloc .corps { padding: 20px 22px; }
+  .lien-action { font-size: 13px; color: var(--navy); text-decoration: underline; }
+
+  /* --- Formulaires --- */
+  label { display: block; font-size: 13px; font-weight: 600;
+          color: var(--navy); margin-bottom: 4px; letter-spacing: .2px; }
+  input[type=text], input[type=date], input[type=number], select, input[type=file] {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--navy-bord);
+    border-radius: 4px; font-family: inherit; font-size: 14px;
+    background: #fff; color: #1B2733;
+  }
+  input:focus, select:focus { outline: 2px solid var(--navy); outline-offset: -1px; }
+  .rang { display: flex; gap: 16px; flex-wrap: wrap; }
+  .rang > div { flex: 1; min-width: 165px; }
+  .champ { margin-bottom: 14px; }
+
+  button, .bouton {
+    background: var(--navy); color: #fff; border: 0; border-radius: 4px;
+    padding: 11px 20px; font-family: inherit; font-size: 15px; font-weight: 600;
+    cursor: pointer; letter-spacing: .3px;
+  }
+  button:hover { background: var(--navy-90); }
+  button.mineur { background: #fff; color: var(--navy);
+                  border: 1px solid var(--navy-bord); font-size: 13px; padding: 7px 14px; }
+  button.mineur:hover { background: var(--navy-fond); }
+  .pleine { width: 100%; margin-top: 6px; }
+
+  /* --- Messages --- */
+  .flash { padding: 11px 16px; border-radius: 4px; margin-bottom: 18px;
+           font-size: 14px; border-left: 4px solid; }
+  .flash.success { background: var(--navy-fond); border-color: var(--navy); color: var(--navy); }
+  .flash.error   { background: var(--rouge-fond); border-color: var(--rouge); color: #8E1109; }
+
+  /* --- Listes de dossiers --- */
+  .dossier { display: flex; align-items: center; justify-content: space-between;
+             gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--bord); }
+  .dossier:last-child { border-bottom: 0; }
+  .dossier .objet { font-weight: 600; color: var(--navy); font-size: 14px; }
+  .dossier .meta { font-size: 12.5px; color: var(--gris); margin-top: 1px; }
+  .etat { font-size: 11px; font-weight: 700; letter-spacing: .6px;
+          text-transform: uppercase; padding: 2px 8px; border-radius: 3px;
+          border: 1px solid var(--navy-bord); color: var(--navy);
+          background: var(--navy-fond); white-space: nowrap; }
+  .etat.tarde { border-color: var(--rouge); color: var(--rouge); background: var(--rouge-fond); }
+  .vide { color: var(--gris); font-size: 13.5px; font-style: italic; margin: 0; }
+
+  /* --- Sélection en cours --- */
+  #bandeau_sel { display: none; background: var(--navy-fond);
+                 border: 1px solid var(--navy-bord); border-left: 4px solid var(--navy);
+                 border-radius: 4px; padding: 12px 16px; margin-bottom: 16px; }
+  #bandeau_sel .etiq { font-size: 12px; color: var(--gris);
+                       text-transform: uppercase; letter-spacing: .8px; }
+  #bandeau_sel .nom { font-weight: 700; color: var(--navy);
+                      word-break: break-all; font-size: 14px; margin: 2px 0 8px; }
+  #aide-numero { font-size: 12.5px; color: var(--gris); margin-top: 4px; min-height: 17px; }
+
+  /* --- Registre --- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--navy); color: #fff; text-align: left;
+       padding: 9px 11px; font-weight: 600; letter-spacing: .3px; }
+  td { padding: 9px 11px; border-bottom: 1px solid var(--bord); vertical-align: top; }
+  tbody tr:nth-child(even) { background: #FAFBFC; }
+  td a { color: var(--navy); font-weight: 600; }
+
+  .pied { text-align: center; font-size: 12px; color: var(--gris);
+          padding: 22px 0 0; border-top: 1px solid var(--bord); margin-top: 30px; }
+
+  @media (max-width: 700px) {
+    .rang > div { min-width: 100%; }
+    .dossier { flex-direction: column; align-items: flex-start; }
+  }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>GED WAKATI - Enregistrer un document</h1>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="flash {{ category }}">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-
-        <form method="POST" enctype="multipart/form-data">
-            <div class="form-group">
-                <label>Fichier PDF *</label>
-                <input type="file" name="pdf" accept=".pdf" required>
-            </div>
-            
-            <div class="form-group">
-                <label>Sens du courrier *</label>
-                <select name="sens">
-                    <option value="entrant">Courrier Entrant</option>
-                    <option value="sortant">Courrier Sortant</option>
-                </select>
-            </div>
-
-            <div class="row">
-                <div class="col">
-                    <div class="form-group">
-                        <label>Service *</label>
-                        <select name="service">
-                            {% for code, nom in services.items() %}
-                            <option value="{{ code }}">{{ nom }} ({{ code }})</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-                <div class="col">
-                    <div class="form-group">
-                        <label>Type de document *</label>
-                        <select name="type_doc">
-                            {% for code, nom in types.items() %}
-                            <option value="{{ code }}">{{ nom }} ({{ code }})</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row">
-                <div class="col">
-                    <div class="form-group">
-                        <label>Date du document *</label>
-                        <input type="date" name="date_doc" required>
-                    </div>
-                </div>
-                <div class="col">
-                    <div class="form-group">
-                        <label>Numéro d'ordre * (ex: 1, 2, 3...)</label>
-                        <input type="number" name="num_ordre" min="1" required>
-                    </div>
-                </div>
-                <div class="col">
-                    <div class="form-group">
-                        <label>Île (facultatif)</label>
-                        <select name="ile">
-                            <option value="">(aucune)</option>
-                            {% for code, nom in iles.items() %}
-                            <option value="{{ code }}">{{ nom }} ({{ code }})</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label>Objet (mots-clés) *</label>
-                <input type="text" name="objet" required placeholder="Ex: lettre de condoleance PFSS">
-            </div>
-
-            <button type="submit">Classer le document</button>
-        </form>
-
-        <h2>Registre 2026 (Derniers documents classés)</h2>
-        <table>
-            <tr>
-                <th>Nom du fichier</th>
-                <th>Service</th>
-                <th>Date</th>
-                <th>Objet</th>
-                <th>Lien Zoho</th>
-            </tr>
-            {% for row in registre %}
-                {% if not loop.last %} {# On saute l'en-tête inversé qui est à la fin #}
-                <tr>
-                    <td>{{ row[0] }}</td>
-                    <td>{{ row[1] }}</td>
-                    <td>{{ row[3] }}</td>
-                    <td>{{ row[5] }}</td>
-                    <td><a href="{{ row[9] }}" target="_blank">Ouvrir</a></td>
-                </tr>
-                {% endif %}
-            {% endfor %}
-        </table>
+<header class="bandeau">
+  <div class="in">
+    <div>
+      <div class="marque">W A K A T I</div>
+      <div class="slogan">NDUWO UWO</div>
     </div>
+    <div class="sous">Gestion électronique des documents</div>
+  </div>
+</header>
+
+<div class="page">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- ============================================================
+       1. SOUMETTRE UN COURRIER À LA SIGNATURE
+       ============================================================ -->
+  <section class="bloc">
+    <h2>1 &nbsp;·&nbsp; Soumettre un courrier à la signature</h2>
+    <div class="corps">
+      <form method="POST" action="{{ url_for('soumettre') }}" enctype="multipart/form-data">
+
+        <div class="champ">
+          <label for="s_pdf">Projet de courrier (PDF)</label>
+          <input type="file" id="s_pdf" name="pdf" accept=".pdf" required>
+        </div>
+
+        <div class="rang">
+          <div class="champ">
+            <label for="s_service">Service</label>
+            <select id="s_service" name="service" required>
+              {% for code, nom in services.items() %}
+              <option value="{{ code }}">{{ nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="champ">
+            <label for="s_type">Type de document</label>
+            <select id="s_type" name="type_doc" required>
+              {% for code, nom in types.items() %}
+              <option value="{{ code }}">{{ nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="champ">
+            <label for="s_date">Date du document</label>
+            <input type="date" id="s_date" name="date_doc" required>
+          </div>
+          <div class="champ">
+            <label for="s_ile">Île</label>
+            <select id="s_ile" name="ile">
+              <option value="">(aucune)</option>
+              {% for code, nom in iles.items() %}
+              <option value="{{ code }}">{{ nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="champ">
+          <label for="s_objet">Objet</label>
+          <input type="text" id="s_objet" name="objet" required
+                 placeholder="Ex : réponse appel d'offres transport">
+        </div>
+
+        <input type="hidden" name="deposant" value="Service GED">
+
+        <button type="submit" class="pleine">Envoyer à la signature</button>
+        <p style="font-size:12.5px;color:var(--gris);margin:10px 0 0;">
+          Le numéro d'ordre sera attribué au moment de l'archivage, après signature.
+        </p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       2. EN ATTENTE DE SIGNATURE
+       ============================================================ -->
+  <section class="bloc">
+    <h2>
+      <span>2 &nbsp;·&nbsp; En attente de signature
+        {% if en_attente %}<span class="compte">{{ en_attente|length }}</span>{% endif %}
+      </span>
+      <a class="lien-action" href="{{ url_for('actualiser') }}">Vérifier maintenant</a>
+    </h2>
+    <div class="corps">
+      {% if en_attente %}
+        {% for d in en_attente %}
+        <div class="dossier">
+          <div>
+            <div class="objet">{{ d.objet }}</div>
+            <div class="meta">{{ d.service_lib }} &middot; {{ d.type_lib }} &middot; envoyé le {{ d.soumis_affiche }}</div>
+          </div>
+          <span class="etat {% if d.jours >= 3 %}tarde{% endif %}">
+            {% if d.jours == 0 %}Aujourd'hui
+            {% elif d.jours == 1 %}1 jour
+            {% else %}{{ d.jours }} jours{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="vide">Aucun courrier chez le signataire.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- ============================================================
+       3. SIGNÉS — À ARCHIVER
+       ============================================================ -->
+  <section class="bloc">
+    <h2>3 &nbsp;·&nbsp; Signés, à archiver
+      {% if a_classer %}<span class="compte">{{ a_classer|length }}</span>{% endif %}
+    </h2>
+    <div class="corps">
+      {% if a_classer %}
+        {% for c in a_classer %}
+        <div class="dossier">
+          <div>
+            <div class="objet">{{ c.objet }}</div>
+            <div class="meta">{{ c.service_lib }} &middot; {{ c.type_lib }} &middot; {{ c.date_doc }}</div>
+          </div>
+          <button type="button" class="mineur" onclick="choisir(this)"
+                  data-fichier="{{ c.fichier }}" data-service="{{ c.service }}"
+                  data-type="{{ c.type_doc }}" data-date="{{ c.date_doc }}"
+                  data-objet="{{ c.objet }}">Archiver</button>
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="vide">Aucun courrier signé en attente. Les documents signés
+        apparaissent ici automatiquement, sans rien lancer.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- ============================================================
+       4. ARCHIVER
+       ============================================================ -->
+  <section class="bloc">
+    <h2>4 &nbsp;·&nbsp; Archiver un document</h2>
+    <div class="corps">
+      <form method="POST" action="{{ url_for('index') }}" enctype="multipart/form-data" id="formulaire">
+
+        <input type="hidden" name="fichier_local" id="fichier_local" value="">
+
+        <div id="bandeau_sel">
+          <div class="etiq">Courrier signé sélectionné</div>
+          <div class="nom" id="bandeau_nom"></div>
+          <button type="button" class="mineur" onclick="annuler()">Annuler la sélection</button>
+        </div>
+
+        <div class="champ" id="bloc_fichier">
+          <label for="a_pdf">Fichier PDF</label>
+          <input type="file" id="a_pdf" name="pdf" accept=".pdf" required>
+        </div>
+
+        <div class="rang">
+          <div class="champ">
+            <label for="champ_service">Service</label>
+            <select id="champ_service" name="service" onchange="majNumero()">
+              {% for code, nom in services.items() %}
+              <option value="{{ code }}">{{ nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="champ">
+            <label for="champ_type">Type de document</label>
+            <select id="champ_type" name="type_doc" onchange="majNumero()">
+              {% for code, nom in types.items() %}
+              <option value="{{ code }}">{{ nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="champ">
+            <label for="champ_date">Date du document</label>
+            <input type="date" id="champ_date" name="date_doc" required>
+          </div>
+        </div>
+
+        <div class="rang">
+          <div class="champ">
+            <label for="champ_numero">Numéro d'ordre</label>
+            <input type="number" id="champ_numero" name="num_ordre" min="1" required>
+            <div id="aide-numero"></div>
+          </div>
+          <div class="champ">
+            <label for="a_ile">Île</label>
+            <select id="a_ile" name="ile">
+              <option value="">(aucune)</option>
+              {% for code, nom in iles.items() %}
+              <option value="{{ code }}">{{ nom }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="champ">
+          <label for="champ_objet">Objet</label>
+          <input type="text" id="champ_objet" name="objet" required
+                 placeholder="Ex : lettre de condoléances PFSS">
+        </div>
+
+        <button type="submit" class="pleine">Archiver le document</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       5. REGISTRE
+       ============================================================ -->
+  <section class="bloc">
+    <h2>Derniers documents archivés</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Nom du fichier</th><th>Service</th><th>Date</th><th>Objet</th><th>Document</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in registre %}
+          {% if not loop.last %}
+          <tr>
+            <td>{{ row[0] }}</td>
+            <td>{{ row[1] }}</td>
+            <td>{{ row[3] }}</td>
+            <td>{{ row[5] }}</td>
+            <td><a href="{{ row[9] }}" target="_blank" rel="noopener">Ouvrir</a></td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <div class="pied">
+    Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+  </div>
+
+</div>
+
+<script>
+function choisir(bouton) {
+    var d = bouton.dataset;
+    document.getElementById('fichier_local').value = d.fichier;
+    document.getElementById('bandeau_nom').textContent = d.fichier;
+    document.getElementById('bandeau_sel').style.display = 'block';
+
+    // Le document vient du dossier des courriers signés : plus d'upload attendu.
+    document.getElementById('bloc_fichier').style.display = 'none';
+    document.getElementById('a_pdf').required = false;
+    document.getElementById('a_pdf').value = '';
+
+    document.getElementById('champ_service').value = d.service;
+    document.getElementById('champ_type').value = d.type;
+    document.getElementById('champ_date').value = d.date;
+    document.getElementById('champ_objet').value = d.objet;
+
+    majNumero();
+    document.getElementById('formulaire').scrollIntoView({behavior: 'smooth', block: 'center'});
+    document.getElementById('champ_numero').focus();
+}
+
+function annuler() {
+    document.getElementById('fichier_local').value = '';
+    document.getElementById('bandeau_sel').style.display = 'none';
+    document.getElementById('bloc_fichier').style.display = 'block';
+    document.getElementById('a_pdf').required = true;
+}
+
+// Rappelle le dernier numéro utilisé. La saisie reste manuelle :
+// on informe, on ne décide pas à la place de la responsable GED.
+function majNumero() {
+    var service = document.getElementById('champ_service').value;
+    var type = document.getElementById('champ_type').value;
+    var aide = document.getElementById('aide-numero');
+    if (!service || !type) { aide.textContent = ''; return; }
+
+    fetch('/api/dernier-numero?service=' + service + '&type_doc=' + type)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.dernier === null) {
+                aide.textContent = 'Aucun ' + service + '/' + type + ' archivé cette année.';
+            } else {
+                aide.textContent = 'Dernier : ' + String(d.dernier).padStart(3, '0')
+                                 + ' — suivant : ' + d.suggestion;
+            }
+        })
+        .catch(function () { aide.textContent = ''; });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    majNumero();
+    var auj = new Date().toISOString().slice(0, 10);
+    var sd = document.getElementById('s_date');
+    if (sd && !sd.value) { sd.value = auj; }
+});
+</script>
 </body>
 </html>

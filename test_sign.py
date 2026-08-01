@@ -80,7 +80,7 @@ def main():
         sys.exit(1)
 
     probe = requests.get(
-        f"{SIGN_API}/api/v1/requests",
+        f"{SIGN_API}/requests",
         headers={"Authorization": f"Zoho-oauthtoken {token}"},
         timeout=20,
     )

@@ -22,3 +22,7 @@ zoho_config.py.avant-*
 ged_rh_errors.log
 registre_2026.csv
 _tmp/
+
+.mail_token_cache.json
+en_attente.json
+a_classer/

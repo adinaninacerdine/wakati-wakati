@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soumettre un courrier en signature — GED Huri Money</title>
+<style>
+  :root { --bord:#d8d5cc; --txt:#2c2c2a; --sec:#5f5e5a; --acc:#0f6e56; --acc-bg:#e1f5ee; }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--txt);
+         background:#faf9f7; margin:0; padding:2rem 1rem; line-height:1.6; }
+  .wrap { max-width:680px; margin:0 auto; }
+  h1 { font-size:1.4rem; font-weight:500; margin:0 0 .25rem; }
+  .sous { color:var(--sec); font-size:.95rem; margin:0 0 1.5rem; }
+  .carte { background:#fff; border:1px solid var(--bord); border-radius:12px; padding:1.5rem; }
+  .rappel { background:var(--acc-bg); border:1px solid #9fe1cb; border-radius:8px;
+            padding:.75rem 1rem; font-size:.9rem; margin-bottom:1.25rem; }
+  label { display:block; font-size:.9rem; font-weight:500; margin:1rem 0 .35rem; }
+  input, select, textarea { width:100%; padding:.55rem .7rem; border:1px solid var(--bord);
+    border-radius:8px; font-family:inherit; font-size:.95rem; background:#fff; color:var(--txt); }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--acc); outline-offset:-1px; }
+  .duo { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  button { margin-top:1.5rem; width:100%; padding:.7rem; background:var(--acc); color:#fff;
+    border:0; border-radius:8px; font-size:1rem; font-family:inherit; cursor:pointer; }
+  button:hover { background:#085041; }
+  .aide { font-size:.82rem; color:var(--sec); margin-top:.3rem; }
+  .flash { padding:.75rem 1rem; border-radius:8px; margin-bottom:1rem; font-size:.92rem; }
+  .flash.success { background:var(--acc-bg); border:1px solid #9fe1cb; }
+  .flash.error { background:#fcebeb; border:1px solid #f7c1c1; }
+  .liens { margin-top:1.25rem; font-size:.9rem; }
+  .liens a { color:var(--acc); }
+  @media (max-width:520px) { .duo { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Soumettre un courrier en signature</h1>
+  <p class="sous">Le projet part directement au DG. Aucun classement, aucun numéro à ce stade.</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for categorie, message in messages %}
+      <div class="flash {{ categorie }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <div class="carte">
+
+    <div class="rappel">
+      Le numéro d'ordre sera attribué par la responsable GED après signature,
+      au moment du classement. Ne le renseignez pas ici.
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+
+      <label for="pdf">Projet de courrier (PDF)</label>
+      <input type="file" id="pdf" name="pdf" accept="application/pdf" required>
+      <div class="aide">Le fichier doit être un vrai PDF. Les scans convertis conviennent.</div>
+
+      <div class="duo">
+        <div>
+          <label for="service">Service</label>
+          <select id="service" name="service" required>
+            <option value="">—</option>
+            {% for code, libelle in services.items() %}
+              <option value="{{ code }}">{{ libelle }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="type_doc">Type de document</label>
+          <select id="type_doc" name="type_doc" required>
+            <option value="">—</option>
+            {% for code, libelle in types.items() %}
+              <option value="{{ code }}">{{ libelle }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="duo">
+        <div>
+          <label for="date_doc">Date du document</label>
+          <input type="date" id="date_doc" name="date_doc" required>
+        </div>
+        <div>
+          <label for="ile">Île</label>
+          <select id="ile" name="ile">
+            <option value="">—</option>
+            {% for code, libelle in iles.items() %}
+              <option value="{{ code }}">{{ libelle }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <label for="objet">Objet</label>
+      <input type="text" id="objet" name="objet" maxlength="80" required
+             placeholder="Réponse appel d'offres transport">
+
+      <label for="deposant">Votre nom</label>
+      <input type="text" id="deposant" name="deposant" required
+             placeholder="Prénom Nom">
+
+      <button type="submit">Envoyer au DG pour signature</button>
+
+    </form>
+
+    <div class="liens">
+      <a href="{{ url_for('index') }}">Aller à l'écran de classement</a>
+    </div>
+
+  </div>
+
+</div>
+</body>
+</html>
