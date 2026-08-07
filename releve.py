@@ -141,12 +141,13 @@ def telecharger_pdf(rid, nom_cible, entetes):
 
     DOSSIER_CLASSER.mkdir(exist_ok=True)
     cible = DOSSIER_CLASSER / nom_cible
-    n = 1
-    while cible.exists():
-        cible = DOSSIER_CLASSER / f"{Path(nom_cible).stem}-{n}.pdf"
-        n += 1
 
-    cible.write_bytes(r.content)
+    # Ecriture atomique : on ecrit dans un fichier temporaire puis on renomme.
+    # Sans cela, une interruption laisserait un PDF tronque dans a_classer/,
+    # que l'application afficherait comme un courrier valide.
+    temporaire = cible.with_suffix(".part")
+    temporaire.write_bytes(r.content)
+    temporaire.replace(cible)
     return cible
 
 
@@ -176,6 +177,7 @@ def nom_provisoire(meta, rid):
 
 
 def une_passe(verbeux=False):
+    nettoyer_doublons()
     attente = charger_attente()
     if not attente:
         print(f"[{datetime.now():%Y-%m-%d %H:%M}] Rien en attente.")
@@ -197,6 +199,17 @@ def une_passe(verbeux=False):
 
         if statut in STATUTS_SIGNE:
             nom = nom_provisoire(meta, rid)
+            deja = DOSSIER_CLASSER / nom
+
+            # Le fichier est deja la : le telechargement a abouti lors d'un
+            # passage precedent, mais l'entree n'a pas pu etre retiree. On la
+            # retire maintenant, sans retelecharger — c'est ce qui produisait
+            # des doublons suffixes « -1 » dans a_classer/.
+            if deja.exists():
+                print(f"  [{rid}] deja releve ({deja.name}) — entree retiree")
+                signes += 1
+                continue
+
             chemin = telecharger_pdf(rid, nom, entetes)
             if chemin is None:
                 print(f"  [{rid}] signe mais telechargement echoue — conserve")
@@ -240,6 +253,35 @@ def une_passe(verbeux=False):
     print(f"  Bilan : {signes} signe(s), {echecs} echec(s), {len(restants)} en attente")
 
 
+def nettoyer_doublons():
+    """Supprime les fichiers suffixes « -1 », « -2 »... laisses par l'ancienne
+    version, lorsque l'original est present."""
+    if not DOSSIER_CLASSER.exists():
+        return 0
+
+    import re as _re
+    motif = _re.compile(r"^(.+)-(\d+)\.pdf$")
+    supprimes = 0
+
+    for chemin in sorted(DOSSIER_CLASSER.glob("*.pdf")):
+        m = motif.match(chemin.name)
+        if not m:
+            continue
+        original = DOSSIER_CLASSER / f"{m.group(1)}.pdf"
+        if original.exists():
+            chemin.unlink()
+            print(f"  Doublon supprime : {chemin.name}")
+            supprimes += 1
+
+    # Fichiers .part : telechargements interrompus, sans valeur.
+    for chemin in DOSSIER_CLASSER.glob("*.part"):
+        chemin.unlink()
+        print(f"  Fragment supprime : {chemin.name}")
+        supprimes += 1
+
+    return supprimes
+
+
 def sonder(rid):
     """Teste les endpoints candidats sur une demande reelle."""
     entetes = _entetes()
@@ -272,6 +314,11 @@ def sonder(rid):
 
 
 if __name__ == "__main__":
+    if "--nettoyer" in sys.argv:
+        n = nettoyer_doublons()
+        print(f"{n} fichier(s) supprime(s).")
+        sys.exit(0)
+
     if "--probe" in sys.argv:
         i = sys.argv.index("--probe")
         if len(sys.argv) <= i + 1:

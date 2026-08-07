@@ -4,367 +4,345 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GED WAKATI</title>
-<style>
-  :root {
-    --navy:      #03224C;
-    --navy-90:   #0A2E5E;
-    --navy-fond: #F2F5F9;
-    --navy-bord: #C9D6E5;
-    --rouge:     #E60E06;
-    --rouge-fond:#FDECEB;
-    --gris:      #5B6B7F;
-    --bord:      #DFE4EA;
-  }
-  * { box-sizing: border-box; }
-  body {
-    font-family: Calibri, "Segoe UI", system-ui, sans-serif;
-    background: #F7F8FA; color: #1B2733; margin: 0; line-height: 1.55;
-  }
-
-  /* --- Bandeau --- */
-  .bandeau { background: var(--navy); color: #fff; padding: 18px 0; }
-  .bandeau .in { max-width: 1000px; margin: auto; padding: 0 24px;
-                 display: flex; align-items: center; justify-content: space-between; }
-  .marque { font-family: "Calibri Light", Calibri, sans-serif;
-            font-size: 26px; letter-spacing: 6px; font-weight: 300; }
-  .slogan { color: var(--rouge); font-size: 13px; letter-spacing: 2px; font-weight: 600; }
-  .bandeau .sous { font-size: 13px; color: #A8BCD4; letter-spacing: .5px; }
-
-  .page { max-width: 1000px; margin: 26px auto 60px; padding: 0 24px; }
-
-  /* --- Sections --- */
-  .bloc { background: #fff; border: 1px solid var(--bord);
-          border-radius: 6px; margin-bottom: 22px; overflow: hidden; }
-  .bloc > h2 {
-    font-family: "Calibri Light", Calibri, sans-serif; font-weight: 400;
-    font-size: 17px; color: var(--navy); margin: 0;
-    padding: 14px 22px; border-bottom: 1px solid var(--bord);
-    background: var(--navy-fond);
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .bloc > h2 .compte {
-    background: var(--navy); color: #fff; font-family: Calibri, sans-serif;
-    font-size: 12px; font-weight: 700; border-radius: 10px; padding: 1px 9px;
-  }
-  .bloc .corps { padding: 20px 22px; }
-  .lien-action { font-size: 13px; color: var(--navy); text-decoration: underline; }
-
-  /* --- Formulaires --- */
-  label { display: block; font-size: 13px; font-weight: 600;
-          color: var(--navy); margin-bottom: 4px; letter-spacing: .2px; }
-  input[type=text], input[type=date], input[type=number], select, input[type=file] {
-    width: 100%; padding: 8px 10px; border: 1px solid var(--navy-bord);
-    border-radius: 4px; font-family: inherit; font-size: 14px;
-    background: #fff; color: #1B2733;
-  }
-  input:focus, select:focus { outline: 2px solid var(--navy); outline-offset: -1px; }
-  .rang { display: flex; gap: 16px; flex-wrap: wrap; }
-  .rang > div { flex: 1; min-width: 165px; }
-  .champ { margin-bottom: 14px; }
-
-  button, .bouton {
-    background: var(--navy); color: #fff; border: 0; border-radius: 4px;
-    padding: 11px 20px; font-family: inherit; font-size: 15px; font-weight: 600;
-    cursor: pointer; letter-spacing: .3px;
-  }
-  button:hover { background: var(--navy-90); }
-  button.mineur { background: #fff; color: var(--navy);
-                  border: 1px solid var(--navy-bord); font-size: 13px; padding: 7px 14px; }
-  button.mineur:hover { background: var(--navy-fond); }
-  .pleine { width: 100%; margin-top: 6px; }
-
-  /* --- Messages --- */
-  .flash { padding: 11px 16px; border-radius: 4px; margin-bottom: 18px;
-           font-size: 14px; border-left: 4px solid; }
-  .flash.success { background: var(--navy-fond); border-color: var(--navy); color: var(--navy); }
-  .flash.error   { background: var(--rouge-fond); border-color: var(--rouge); color: #8E1109; }
-
-  /* --- Listes de dossiers --- */
-  .dossier { display: flex; align-items: center; justify-content: space-between;
-             gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--bord); }
-  .dossier:last-child { border-bottom: 0; }
-  .dossier .objet { font-weight: 600; color: var(--navy); font-size: 14px; }
-  .dossier .meta { font-size: 12.5px; color: var(--gris); margin-top: 1px; }
-  .etat { font-size: 11px; font-weight: 700; letter-spacing: .6px;
-          text-transform: uppercase; padding: 2px 8px; border-radius: 3px;
-          border: 1px solid var(--navy-bord); color: var(--navy);
-          background: var(--navy-fond); white-space: nowrap; }
-  .etat.tarde { border-color: var(--rouge); color: var(--rouge); background: var(--rouge-fond); }
-  .vide { color: var(--gris); font-size: 13.5px; font-style: italic; margin: 0; }
-
-  /* --- Sélection en cours --- */
-  #bandeau_sel { display: none; background: var(--navy-fond);
-                 border: 1px solid var(--navy-bord); border-left: 4px solid var(--navy);
-                 border-radius: 4px; padding: 12px 16px; margin-bottom: 16px; }
-  #bandeau_sel .etiq { font-size: 12px; color: var(--gris);
-                       text-transform: uppercase; letter-spacing: .8px; }
-  #bandeau_sel .nom { font-weight: 700; color: var(--navy);
-                      word-break: break-all; font-size: 14px; margin: 2px 0 8px; }
-  #aide-numero { font-size: 12.5px; color: var(--gris); margin-top: 4px; min-height: 17px; }
-
-  /* --- Registre --- */
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { background: var(--navy); color: #fff; text-align: left;
-       padding: 9px 11px; font-weight: 600; letter-spacing: .3px; }
-  td { padding: 9px 11px; border-bottom: 1px solid var(--bord); vertical-align: top; }
-  tbody tr:nth-child(even) { background: #FAFBFC; }
-  td a { color: var(--navy); font-weight: 600; }
-
-  .pied { text-align: center; font-size: 12px; color: var(--gris);
-          padding: 22px 0 0; border-top: 1px solid var(--bord); margin-top: 30px; }
-
-  @media (max-width: 700px) {
-    .rang > div { min-width: 100%; }
-    .dossier { flex-direction: column; align-items: flex-start; }
-  }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
 </head>
 <body>
 
-<header class="bandeau">
-  <div class="in">
-    <div>
-      <div class="marque">W A K A T I</div>
-      <div class="slogan">NDUWO UWO</div>
-    </div>
-    <div class="sous">Gestion électronique des documents</div>
+<!-- ============================================================
+     BARRE LATÉRALE
+     ============================================================ -->
+<aside class="barre">
+  <div class="marque-zone">
+    <div class="marque">W A K A T I</div>
+    <div class="slogan">NDUWO UWO</div>
   </div>
-</header>
 
-<div class="page">
+  <nav>
+    <div class="rubrique">Documents</div>
+    <a class="item actif" href="{{ url_for('index') }}">
+      <span class="ico">▤</span> Courriers
+    </a>
+    <a class="item" href="{{ url_for('tableau_de_bord') }}">
+      <span class="ico">▦</span> Tableau de bord
+    </a>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for category, message in messages %}
-      <div class="flash {{ category }}">{{ message }}</div>
-    {% endfor %}
-  {% endwith %}
+    <div class="rubrique">Suivi</div>
+    <a class="item" href="#section-attente">
+      <span class="ico">◷</span> En signature
+      {% if en_attente %}<span class="pastille">{{ en_attente|length }}</span>{% endif %}
+    </a>
+    <a class="item" href="#section-archiver">
+      <span class="ico">✓</span> À archiver
+      {% if a_classer %}<span class="pastille">{{ a_classer|length }}</span>{% endif %}
+    </a>
 
-  <!-- ============================================================
-       1. SOUMETTRE UN COURRIER À LA SIGNATURE
-       ============================================================ -->
-  <section class="bloc">
-    <h2>1 &nbsp;·&nbsp; Soumettre un courrier à la signature</h2>
-    <div class="corps">
-      <form method="POST" action="{{ url_for('soumettre') }}" enctype="multipart/form-data">
+    <div class="rubrique">Zoho</div>
+    <a class="item" href="https://sheet.zoho.com/sheet/open/avaji4d47ec1cbffc4f5184dc8b3127b83ae7" target="_blank" rel="noopener">
+      <span class="ico">▤</span> Registre 2026
+    </a>
+    <a class="item" href="https://workdrive.zoho.com/6hmdw50c5a29c26084da9be977e3081c55baa/teams/6hmdw50c5a29c26084da9be977e3081c55baa/ws/38345833623b6c50f40f4b8110bd1bf36334a/folders/files" target="_blank" rel="noopener">
+      <span class="ico">▣</span> WorkDrive
+    </a>
+  </nav>
 
-        <div class="champ">
-          <label for="s_pdf">Projet de courrier (PDF)</label>
-          <input type="file" id="s_pdf" name="pdf" accept=".pdf" required>
-        </div>
+  <div class="bas">
+    <button class="bascule" onclick="basculerTheme()">
+      <span id="icone-theme">☾</span>
+      <span id="libelle-theme">Mode sombre</span>
+    </button>
+    {% if utilisateur %}
+      {{ utilisateur }}<br>
+      <a href="{{ url_for('deconnexion') }}" style="color:inherit;">Se déconnecter</a>
+    {% else %}
+      Huri Money SA
+    {% endif %}
+  </div>
+</aside>
 
-        <div class="rang">
+<!-- ============================================================
+     ZONE PRINCIPALE
+     ============================================================ -->
+<div class="principal">
+
+  <header class="entete">
+    <h1>Gestion des courriers</h1>
+    <div class="contexte">Huri Money SA — Union des Comores</div>
+  </header>
+
+  <div class="contenu">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <!-- 1. SOUMETTRE -->
+    <section class="bloc">
+      <h2>1 &nbsp;·&nbsp; Soumettre un courrier à la signature</h2>
+      <div class="corps">
+        <form method="POST" action="{{ url_for('soumettre') }}" enctype="multipart/form-data">
+
           <div class="champ">
-            <label for="s_service">Service</label>
-            <select id="s_service" name="service" required>
-              {% for code, nom in services.items() %}
-              <option value="{{ code }}">{{ nom }}</option>
-              {% endfor %}
-            </select>
+            <label for="s_pdf">Projet de courrier (PDF)</label>
+            <input type="file" id="s_pdf" name="pdf" accept=".pdf" required>
           </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="s_service">Service</label>
+              <select id="s_service" name="service" required>
+                {% for code, nom in services.items() %}
+                <option value="{{ code }}">{{ nom }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="champ">
+              <label for="s_type">Type de document</label>
+              <select id="s_type" name="type_doc" required>
+                {% for code, nom in types.items() %}
+                <option value="{{ code }}">{{ nom }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="champ">
+              <label for="s_date">Date du document</label>
+              <input type="date" id="s_date" name="date_doc" required>
+            </div>
+            <div class="champ">
+              <label for="s_ile">Île</label>
+              <select id="s_ile" name="ile">
+                <option value="">(aucune)</option>
+                {% for code, nom in iles.items() %}
+                <option value="{{ code }}">{{ nom }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="s_sens">Sens du courrier</label>
+              <select id="s_sens" name="sens" onchange="majLibelle('s')">
+                <option value="sortant">Sortant</option>
+                <option value="entrant">Entrant</option>
+              </select>
+            </div>
+            <div class="champ">
+              <label for="s_correspondant" id="s_lbl_corr">Destinataire</label>
+              <input type="text" id="s_correspondant" name="correspondant"
+                     placeholder="Ex : Banque Centrale des Comores">
+            </div>
+          </div>
+
           <div class="champ">
-            <label for="s_type">Type de document</label>
-            <select id="s_type" name="type_doc" required>
-              {% for code, nom in types.items() %}
-              <option value="{{ code }}">{{ nom }}</option>
-              {% endfor %}
-            </select>
+            <label for="s_objet">Objet</label>
+            <input type="text" id="s_objet" name="objet" required
+                   placeholder="Ex : réponse appel d'offres transport">
           </div>
+
+          <input type="hidden" name="deposant" value="Service GED">
+
+          <button type="submit" class="pleine">Envoyer à la signature</button>
+          <p style="font-size:12.5px;color:var(--texte-doux);margin:10px 0 0;">
+            Le numéro d'ordre sera attribué au moment de l'archivage, après signature.
+          </p>
+        </form>
+      </div>
+    </section>
+
+    <!-- 2. EN ATTENTE -->
+    <section class="bloc" id="section-attente">
+      <h2>
+        <span>2 &nbsp;·&nbsp; En attente de signature
+          {% if en_attente %}<span class="compte">{{ en_attente|length }}</span>{% endif %}
+        </span>
+        <a class="lien-action" href="{{ url_for('actualiser') }}">Vérifier maintenant</a>
+      </h2>
+      <div class="corps">
+        {% if en_attente %}
+          {% for d in en_attente %}
+          <div class="dossier">
+            <div>
+              <div class="objet">{{ d.objet }}</div>
+              <div class="meta">{{ d.service_lib }} &middot; {{ d.type_lib }}{% if d.correspondant %} &middot; {{ d.correspondant }}{% endif %} &middot; envoyé le {{ d.soumis_affiche }}</div>
+            </div>
+            <span class="etat {% if d.jours >= 3 %}tarde{% endif %}">
+              {% if d.jours == 0 %}Aujourd'hui
+              {% elif d.jours == 1 %}1 jour
+              {% else %}{{ d.jours }} jours{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="vide">Aucun courrier chez le signataire.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- 3. SIGNÉS -->
+    <section class="bloc" id="section-archiver">
+      <h2>3 &nbsp;·&nbsp; Signés, à archiver
+        {% if a_classer %}<span class="compte">{{ a_classer|length }}</span>{% endif %}
+      </h2>
+      <div class="corps">
+        {% if a_classer %}
+          {% for c in a_classer %}
+          <div class="dossier">
+            <div>
+              <div class="objet">{{ c.objet }}</div>
+              <div class="meta">{{ c.service_lib }} &middot; {{ c.type_lib }}{% if c.correspondant %} &middot; {{ c.correspondant }}{% endif %} &middot; {{ c.date_doc }}</div>
+            </div>
+            <button type="button" class="mineur" onclick="choisir(this)"
+                    data-fichier="{{ c.fichier }}" data-service="{{ c.service }}"
+                    data-type="{{ c.type_doc }}" data-date="{{ c.date_doc }}"
+                    data-objet="{{ c.objet }}" data-correspondant="{{ c.correspondant }}"
+                    data-sens="{{ c.sens }}">Archiver</button>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="vide">Aucun courrier signé en attente. Les documents signés
+          apparaissent ici automatiquement, sans rien lancer.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- 4. ARCHIVER -->
+    <section class="bloc">
+      <h2>4 &nbsp;·&nbsp; Archiver un document</h2>
+      <div class="corps">
+        <form method="POST" action="{{ url_for('index') }}" enctype="multipart/form-data" id="formulaire">
+
+          <input type="hidden" name="fichier_local" id="fichier_local" value="">
+
+          <div id="bandeau_sel">
+            <div class="etiq">Courrier signé sélectionné</div>
+            <div class="nom" id="bandeau_nom"></div>
+            <button type="button" class="mineur" onclick="annuler()">Annuler la sélection</button>
+          </div>
+
+          <div class="champ" id="bloc_fichier">
+            <label for="a_pdf">Fichier PDF</label>
+            <input type="file" id="a_pdf" name="pdf" accept=".pdf" required>
+          </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="champ_service">Service</label>
+              <select id="champ_service" name="service" onchange="majNumero()">
+                {% for code, nom in services.items() %}
+                <option value="{{ code }}">{{ nom }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="champ">
+              <label for="champ_type">Type de document</label>
+              <select id="champ_type" name="type_doc" onchange="majNumero()">
+                {% for code, nom in types.items() %}
+                <option value="{{ code }}">{{ nom }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="champ">
+              <label for="champ_date">Date du document</label>
+              <input type="date" id="champ_date" name="date_doc" required>
+            </div>
+          </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="champ_numero">Numéro d'ordre</label>
+              <input type="number" id="champ_numero" name="num_ordre" min="1" required>
+              <div id="aide-numero"></div>
+            </div>
+            <div class="champ">
+              <label for="a_ile">Île</label>
+              <select id="a_ile" name="ile">
+                <option value="">(aucune)</option>
+                {% for code, nom in iles.items() %}
+                <option value="{{ code }}">{{ nom }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="champ_sens">Sens du courrier</label>
+              <select id="champ_sens" name="sens" onchange="majLibelle('a')">
+                <option value="entrant">Entrant</option>
+                <option value="sortant">Sortant</option>
+              </select>
+            </div>
+            <div class="champ">
+              <label for="champ_correspondant" id="a_lbl_corr">Expéditeur</label>
+              <input type="text" id="champ_correspondant" name="correspondant"
+                     placeholder="Ex : Comores Télécom">
+            </div>
+          </div>
+
           <div class="champ">
-            <label for="s_date">Date du document</label>
-            <input type="date" id="s_date" name="date_doc" required>
+            <label for="champ_objet">Objet</label>
+            <input type="text" id="champ_objet" name="objet" required
+                   placeholder="Ex : lettre de condoléances PFSS">
           </div>
-          <div class="champ">
-            <label for="s_ile">Île</label>
-            <select id="s_ile" name="ile">
-              <option value="">(aucune)</option>
-              {% for code, nom in iles.items() %}
-              <option value="{{ code }}">{{ nom }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
 
-        <div class="champ">
-          <label for="s_objet">Objet</label>
-          <input type="text" id="s_objet" name="objet" required
-                 placeholder="Ex : réponse appel d'offres transport">
-        </div>
+          <button type="submit" class="pleine">Archiver le document</button>
+        </form>
+      </div>
+    </section>
 
-        <input type="hidden" name="deposant" value="Service GED">
-
-        <button type="submit" class="pleine">Envoyer à la signature</button>
-        <p style="font-size:12.5px;color:var(--gris);margin:10px 0 0;">
-          Le numéro d'ordre sera attribué au moment de l'archivage, après signature.
-        </p>
-      </form>
-    </div>
-  </section>
-
-  <!-- ============================================================
-       2. EN ATTENTE DE SIGNATURE
-       ============================================================ -->
-  <section class="bloc">
-    <h2>
-      <span>2 &nbsp;·&nbsp; En attente de signature
-        {% if en_attente %}<span class="compte">{{ en_attente|length }}</span>{% endif %}
-      </span>
-      <a class="lien-action" href="{{ url_for('actualiser') }}">Vérifier maintenant</a>
-    </h2>
-    <div class="corps">
-      {% if en_attente %}
-        {% for d in en_attente %}
-        <div class="dossier">
-          <div>
-            <div class="objet">{{ d.objet }}</div>
-            <div class="meta">{{ d.service_lib }} &middot; {{ d.type_lib }} &middot; envoyé le {{ d.soumis_affiche }}</div>
-          </div>
-          <span class="etat {% if d.jours >= 3 %}tarde{% endif %}">
-            {% if d.jours == 0 %}Aujourd'hui
-            {% elif d.jours == 1 %}1 jour
-            {% else %}{{ d.jours }} jours{% endif %}
-          </span>
-        </div>
-        {% endfor %}
-      {% else %}
-        <p class="vide">Aucun courrier chez le signataire.</p>
-      {% endif %}
-    </div>
-  </section>
-
-  <!-- ============================================================
-       3. SIGNÉS — À ARCHIVER
-       ============================================================ -->
-  <section class="bloc">
-    <h2>3 &nbsp;·&nbsp; Signés, à archiver
-      {% if a_classer %}<span class="compte">{{ a_classer|length }}</span>{% endif %}
-    </h2>
-    <div class="corps">
-      {% if a_classer %}
-        {% for c in a_classer %}
-        <div class="dossier">
-          <div>
-            <div class="objet">{{ c.objet }}</div>
-            <div class="meta">{{ c.service_lib }} &middot; {{ c.type_lib }} &middot; {{ c.date_doc }}</div>
-          </div>
-          <button type="button" class="mineur" onclick="choisir(this)"
-                  data-fichier="{{ c.fichier }}" data-service="{{ c.service }}"
-                  data-type="{{ c.type_doc }}" data-date="{{ c.date_doc }}"
-                  data-objet="{{ c.objet }}">Archiver</button>
-        </div>
-        {% endfor %}
-      {% else %}
-        <p class="vide">Aucun courrier signé en attente. Les documents signés
-        apparaissent ici automatiquement, sans rien lancer.</p>
-      {% endif %}
-    </div>
-  </section>
-
-  <!-- ============================================================
-       4. ARCHIVER
-       ============================================================ -->
-  <section class="bloc">
-    <h2>4 &nbsp;·&nbsp; Archiver un document</h2>
-    <div class="corps">
-      <form method="POST" action="{{ url_for('index') }}" enctype="multipart/form-data" id="formulaire">
-
-        <input type="hidden" name="fichier_local" id="fichier_local" value="">
-
-        <div id="bandeau_sel">
-          <div class="etiq">Courrier signé sélectionné</div>
-          <div class="nom" id="bandeau_nom"></div>
-          <button type="button" class="mineur" onclick="annuler()">Annuler la sélection</button>
-        </div>
-
-        <div class="champ" id="bloc_fichier">
-          <label for="a_pdf">Fichier PDF</label>
-          <input type="file" id="a_pdf" name="pdf" accept=".pdf" required>
-        </div>
-
-        <div class="rang">
-          <div class="champ">
-            <label for="champ_service">Service</label>
-            <select id="champ_service" name="service" onchange="majNumero()">
-              {% for code, nom in services.items() %}
-              <option value="{{ code }}">{{ nom }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="champ">
-            <label for="champ_type">Type de document</label>
-            <select id="champ_type" name="type_doc" onchange="majNumero()">
-              {% for code, nom in types.items() %}
-              <option value="{{ code }}">{{ nom }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="champ">
-            <label for="champ_date">Date du document</label>
-            <input type="date" id="champ_date" name="date_doc" required>
-          </div>
-        </div>
-
-        <div class="rang">
-          <div class="champ">
-            <label for="champ_numero">Numéro d'ordre</label>
-            <input type="number" id="champ_numero" name="num_ordre" min="1" required>
-            <div id="aide-numero"></div>
-          </div>
-          <div class="champ">
-            <label for="a_ile">Île</label>
-            <select id="a_ile" name="ile">
-              <option value="">(aucune)</option>
-              {% for code, nom in iles.items() %}
-              <option value="{{ code }}">{{ nom }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-
-        <div class="champ">
-          <label for="champ_objet">Objet</label>
-          <input type="text" id="champ_objet" name="objet" required
-                 placeholder="Ex : lettre de condoléances PFSS">
-        </div>
-
-        <button type="submit" class="pleine">Archiver le document</button>
-      </form>
-    </div>
-  </section>
-
-  <!-- ============================================================
-       5. REGISTRE
-       ============================================================ -->
-  <section class="bloc">
-    <h2>Derniers documents archivés</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Nom du fichier</th><th>Service</th><th>Date</th><th>Objet</th><th>Document</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in registre %}
-          {% if not loop.last %}
+    <!-- 5. REGISTRE -->
+    <section class="bloc">
+      <h2>Derniers documents archivés</h2>
+      <table>
+        <thead>
           <tr>
-            <td>{{ row[0] }}</td>
-            <td>{{ row[1] }}</td>
-            <td>{{ row[3] }}</td>
-            <td>{{ row[5] }}</td>
-            <td><a href="{{ row[9] }}" target="_blank" rel="noopener">Ouvrir</a></td>
+            <th>Nom du fichier</th><th>Service</th><th>Date</th>
+            <th>Correspondant</th><th>Objet</th><th>Document</th>
           </tr>
-          {% endif %}
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
+        </thead>
+        <tbody>
+          {% for row in registre %}
+            {% if not loop.last %}
+            <tr>
+              <td>{{ row[0] }}</td>
+              <td>{{ row[1] }}</td>
+              <td>{{ row[3] }}</td>
+              <td>{% if row|length > 11 %}{{ row[11] }}{% endif %}</td>
+              <td>{{ row[5] }}</td>
+              <td><a href="{{ row[9] }}" target="_blank" rel="noopener">Ouvrir</a></td>
+            </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
 
-  <div class="pied">
-    Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+
   </div>
-
 </div>
 
 <script>
+// Le libellé s'adapte au sens : on ne saisit pas un expéditeur sur un
+// courrier sortant. Un seul champ, deux significations.
+function majLibelle(prefixe) {
+    var sel = document.getElementById(prefixe === 's' ? 's_sens' : 'champ_sens');
+    var lbl = document.getElementById(prefixe === 's' ? 's_lbl_corr' : 'a_lbl_corr');
+    var inp = document.getElementById(prefixe === 's' ? 's_correspondant' : 'champ_correspondant');
+    if (!sel || !lbl) { return; }
+    var entrant = sel.value === 'entrant';
+    lbl.textContent = entrant ? 'Expéditeur' : 'Destinataire';
+    if (inp) {
+        inp.placeholder = entrant ? 'Ex : Comores Télécom'
+                                  : "Ex : Banque Centrale des Comores";
+    }
+}
+
 function choisir(bouton) {
     var d = bouton.dataset;
     document.getElementById('fichier_local').value = d.fichier;
@@ -380,6 +358,9 @@ function choisir(bouton) {
     document.getElementById('champ_type').value = d.type;
     document.getElementById('champ_date').value = d.date;
     document.getElementById('champ_objet').value = d.objet;
+    if (d.sens) { document.getElementById('champ_sens').value = d.sens; }
+    document.getElementById('champ_correspondant').value = d.correspondant || '';
+    majLibelle('a');
 
     majNumero();
     document.getElementById('formulaire').scrollIntoView({behavior: 'smooth', block: 'center'});
@@ -416,6 +397,8 @@ function majNumero() {
 
 document.addEventListener('DOMContentLoaded', function () {
     majNumero();
+    majLibelle('s');
+    majLibelle('a');
     var auj = new Date().toISOString().slice(0, 10);
     var sd = document.getElementById('s_date');
     if (sd && !sd.value) { sd.value = auj; }

@@ -1,0 +1,72 @@
+# ============================================================
+# GED WAKATI — déploiement VPS
+# ============================================================
+# Démarrage :   docker compose up -d --build
+# Journaux  :   docker compose logs -f ged
+# Mise à jour : git pull && docker compose up -d --build
+
+services:
+
+  ged:
+    build: .
+    container_name: ged-wakati
+    restart: unless-stopped
+
+    # Aucun port publié : Caddy est le seul point d'entrée.
+    # L'application n'est jamais joignable directement depuis Internet.
+    expose:
+      - "5000"
+
+    volumes:
+      # Secrets — montés en lecture seule, jamais dans l'image.
+      - ./zoho_config.py:/app/zoho_config.py:ro
+      - ./notifier_config.py:/app/notifier_config.py:ro
+      - ./auth_config.py:/app/auth_config.py:ro
+      - ./folders_map.json:/app/folders_map.json:ro
+
+      # Données de travail — doivent survivre à une reconstruction d'image.
+      - ged-donnees:/app/donnees
+
+    environment:
+      TZ: Indian/Comoro
+      GED_CONTENEUR: "1"
+      GED_AUTH: "1"
+
+    networks:
+      - toile
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy-ged
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-donnees:/data
+      - caddy-config:/config
+    networks:
+      - toile
+
+volumes:
+  ged-donnees:
+  caddy-donnees:
+  caddy-config:
+
+networks:
+  toile:
+    driver: bridge
+
+# ------------------------------------------------------------
+# NOTE — Caddy et Odoo sur le même VPS
+# ------------------------------------------------------------
+# Si un reverse proxy occupe déjà les ports 80 et 443 (installation Odoo),
+# NE PAS démarrer le service caddy ci-dessus : il entrerait en conflit.
+# Ajouter à la place le bloc ged.wakati.km à la configuration du proxy
+# existant, et rattacher ce conteneur à son réseau :
+#
+#   networks:
+#     toile:
+#       external: true
+#       name: <réseau_du_proxy_existant>

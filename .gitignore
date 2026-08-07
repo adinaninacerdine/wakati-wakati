@@ -26,3 +26,7 @@ _tmp/
 .mail_token_cache.json
 en_attente.json
 a_classer/
+
+audit_social_*.txt
+social_accounts.csv
+utm_campaigns.csv

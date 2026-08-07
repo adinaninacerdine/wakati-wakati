@@ -1,0 +1,333 @@
+/* ============================================================
+   GED WAKATI — feuille de style partagée
+   Charte : navy #03224C, rouge #E60E06, Calibri
+   ============================================================ */
+
+/* --- Thème clair (défaut) --- */
+:root {
+  --navy:       #03224C;
+  --navy-90:    #0A2E5E;
+  --navy-fond:  #F2F5F9;
+  --navy-bord:  #C9D6E5;
+  --rouge:      #E60E06;
+  --rouge-fond: #FDECEB;
+  --rouge-txt:  #8E1109;
+
+  --fond:       #F7F8FA;
+  --surface:    #FFFFFF;
+  --surface-2:  #FAFBFC;
+  --texte:      #1B2733;
+  --texte-doux: #5B6B7F;
+  --bord:       #DFE4EA;
+
+  --barre-fond: #03224C;
+  --barre-txt:  #FFFFFF;
+  --barre-doux: #A8BCD4;
+  --barre-actif:#0A2E5E;
+
+  --vert:       #1E7A4C;
+
+  /* Couleur des textes d'accent (titres, libellés, valeurs).
+     Distincte de --navy, qui sert aux surfaces : boutons, en-têtes de
+     tableau, jauges. Confondre les deux rend le mode sombre illisible. */
+  --accent-txt: #03224C;
+
+  /* Boutons d'action : rouge WAKATI. */
+  --action:      #E60E06;
+  --action-surv: #C40B05;
+  --action-txt:  #FFFFFF;
+}
+
+/* --- Thème sombre ---
+   Le navy ne peut pas servir de fond : trop proche du noir, il ferait
+   disparaître la barre latérale. On garde une base ardoise et le navy
+   remonte en teinte claire pour rester lisible sur fond sombre. */
+[data-theme="sombre"] {
+  --navy:       #7FA8D9;
+  --navy-90:    #9CBCE4;
+  --navy-fond:  #1C2733;
+  --navy-bord:  #33465C;
+  --rouge:      #FF6B63;
+  --rouge-fond: #2E1A19;
+  --rouge-txt:  #FF9B95;
+
+  --fond:       #12181F;
+  --surface:    #1A2129;
+  --surface-2:  #1F2831;
+  --texte:      #E6EBF0;
+  --texte-doux: #9AA9B8;
+  --bord:       #2C3743;
+
+  --barre-fond: #0B1420;
+  --barre-txt:  #E6EBF0;
+  --barre-doux: #8296AC;
+  --barre-actif:#1C2C40;
+
+  --vert:       #4FBE87;
+
+  /* Sur fond sombre, un texte bleu manque de contraste : on passe au blanc
+     cassé. Le bleu clair reste réservé aux surfaces. */
+  --accent-txt: #F0F4F8;
+
+  /* Sur les surfaces d'accent (claires en mode sombre), le texte doit
+     etre sombre pour rester lisible. */
+  --btn-txt:    #0B1420;
+
+  /* Le rouge pur vibre sur fond sombre : on l'adoucit légèrement tout en
+     gardant une couleur clairement identifiable comme celle de la marque. */
+  --action:      #F0332B;
+  --action-surv: #FF564F;
+  --action-txt:  #FFFFFF;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: Calibri, "Segoe UI", system-ui, sans-serif;
+  background: var(--fond);
+  color: var(--texte);
+  margin: 0;
+  line-height: 1.55;
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ============================================================
+   BARRE LATÉRALE
+   ============================================================ */
+.barre {
+  width: 235px;
+  flex-shrink: 0;
+  background: var(--barre-fond);
+  color: var(--barre-txt);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.barre .marque-zone {
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.09);
+}
+.barre .marque {
+  font-family: "Calibri Light", Calibri, sans-serif;
+  font-size: 22px; letter-spacing: 5px; font-weight: 300;
+}
+.barre .slogan {
+  color: var(--rouge); font-size: 11px;
+  letter-spacing: 2px; font-weight: 600; margin-top: 2px;
+}
+
+.barre nav { padding: 14px 12px; flex: 1; }
+.barre .rubrique {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--barre-doux); padding: 12px 10px 6px;
+}
+.barre a.item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 4px; margin-bottom: 2px;
+  color: var(--barre-txt); text-decoration: none; font-size: 14px;
+}
+.barre a.item:hover { background: var(--barre-actif); }
+.barre a.item.actif {
+  background: var(--barre-actif);
+  box-shadow: inset 3px 0 0 var(--rouge);
+  font-weight: 600;
+}
+.barre a.item .pastille {
+  margin-left: auto; background: var(--rouge); color: #fff;
+  font-size: 11px; font-weight: 700; border-radius: 9px; padding: 0 7px;
+}
+.barre .ico { width: 17px; text-align: center; opacity: .85; flex-shrink: 0; }
+
+.barre .bas {
+  padding: 14px 16px;
+  border-top: 1px solid rgba(255,255,255,.09);
+  font-size: 12px; color: var(--barre-doux);
+}
+.barre .bascule {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; background: none; border: 1px solid rgba(255,255,255,.16);
+  color: var(--barre-txt); border-radius: 4px; padding: 8px 11px;
+  font-family: inherit; font-size: 13px; cursor: pointer; margin-bottom: 12px;
+}
+.barre .bascule:hover { background: var(--barre-actif); }
+
+/* ============================================================
+   ZONE PRINCIPALE
+   ============================================================ */
+.principal { flex: 1; min-width: 0; }
+.entete {
+  background: var(--surface); border-bottom: 1px solid var(--bord);
+  padding: 16px 30px; display: flex;
+  align-items: center; justify-content: space-between;
+}
+.entete h1 {
+  font-family: "Calibri Light", Calibri, sans-serif;
+  font-size: 19px; font-weight: 400; color: var(--action); margin: 0;
+}
+.entete .contexte { font-size: 12.5px; color: var(--texte-doux); }
+
+.contenu { padding: 26px 30px 60px; max-width: 1040px; }
+
+/* ============================================================
+   BLOCS ET FORMULAIRES
+   ============================================================ */
+.bloc {
+  background: var(--surface); border: 1px solid var(--bord);
+  border-radius: 6px; margin-bottom: 22px; overflow: hidden;
+}
+.bloc > h2 {
+  font-family: "Calibri Light", Calibri, sans-serif; font-weight: 400;
+  font-size: 16.5px; color: var(--accent-txt); margin: 0; padding: 13px 22px;
+  border-bottom: 1px solid var(--bord); background: var(--navy-fond);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.bloc > h2 .compte {
+  background: var(--navy); color: var(--btn-txt, #FFFFFF);
+  font-family: Calibri, sans-serif; font-size: 12px; font-weight: 700;
+  border-radius: 10px; padding: 1px 9px;
+}
+.bloc .corps { padding: 20px 22px; }
+.lien-action { font-size: 13px; color: var(--accent-txt); text-decoration: underline; }
+
+label {
+  display: block; font-size: 13px; font-weight: 600;
+  color: var(--accent-txt); margin-bottom: 4px; letter-spacing: .2px;
+}
+input[type=text], input[type=date], input[type=number],
+select, input[type=file] {
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--navy-bord); border-radius: 4px;
+  font-family: inherit; font-size: 14px;
+  background: var(--surface); color: var(--texte);
+}
+input:focus, select:focus { outline: 2px solid var(--navy); outline-offset: -1px; }
+input[type=file] { padding: 6px 8px; }
+
+.rang { display: flex; gap: 16px; flex-wrap: wrap; }
+.rang > div { flex: 1; min-width: 165px; }
+.champ { margin-bottom: 14px; }
+
+button {
+  background: var(--action); color: var(--action-txt); border: 0; border-radius: 4px;
+  padding: 11px 20px; font-family: inherit; font-size: 15px;
+  font-weight: 600; cursor: pointer; letter-spacing: .3px;
+}
+button:hover { background: var(--action-surv); }
+button.mineur {
+  background: var(--surface); color: var(--action);
+  border: 1px solid var(--action); font-size: 13px; padding: 7px 14px;
+}
+button.mineur:hover { background: var(--rouge-fond); }
+.pleine { width: 100%; margin-top: 6px; }
+
+/* ============================================================
+   MESSAGES, LISTES, TABLEAUX
+   ============================================================ */
+.flash {
+  padding: 11px 16px; border-radius: 4px; margin-bottom: 18px;
+  font-size: 14px; border-left: 4px solid;
+}
+.flash.success { background: var(--navy-fond); border-color: var(--navy); color: var(--accent-txt); }
+.flash.error { background: var(--rouge-fond); border-color: var(--rouge); color: var(--rouge-txt); }
+
+.dossier {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--bord);
+}
+.dossier:last-child { border-bottom: 0; }
+.dossier .objet { font-weight: 600; color: var(--accent-txt); font-size: 14px; }
+.dossier .meta { font-size: 12.5px; color: var(--texte-doux); margin-top: 1px; }
+
+.etat {
+  font-size: 11px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; padding: 2px 8px; border-radius: 3px;
+  border: 1px solid var(--navy-bord); color: var(--accent-txt);
+  background: var(--navy-fond); white-space: nowrap;
+}
+.etat.tarde { border-color: var(--rouge); color: var(--rouge); background: var(--rouge-fond); }
+.vide { color: var(--texte-doux); font-size: 13.5px; font-style: italic; margin: 0; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  background: var(--action); color: var(--action-txt); text-align: left;
+  padding: 9px 11px; font-weight: 600; letter-spacing: .3px;
+}
+td { padding: 9px 11px; border-bottom: 1px solid var(--bord); vertical-align: top; }
+tbody tr:nth-child(even) { background: var(--surface-2); }
+td a { color: var(--action); font-weight: 600; }
+
+#bandeau_sel {
+  display: none; background: var(--navy-fond);
+  border: 1px solid var(--navy-bord); border-left: 4px solid var(--navy);
+  border-radius: 4px; padding: 12px 16px; margin-bottom: 16px;
+}
+#bandeau_sel .etiq {
+  font-size: 12px; color: var(--texte-doux);
+  text-transform: uppercase; letter-spacing: .8px;
+}
+#bandeau_sel .nom {
+  font-weight: 700; color: var(--accent-txt);
+  word-break: break-all; font-size: 14px; margin: 2px 0 8px;
+}
+#aide-numero { font-size: 12.5px; color: var(--texte-doux); margin-top: 4px; min-height: 17px; }
+
+/* ============================================================
+   TABLEAU DE BORD
+   ============================================================ */
+.cartes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 26px; }
+.carte {
+  background: var(--surface); border: 1px solid var(--bord);
+  border-radius: 6px; padding: 18px 20px;
+}
+.carte .valeur {
+  font-family: "Calibri Light", Calibri, sans-serif;
+  font-size: 34px; font-weight: 300; color: var(--accent-txt); line-height: 1.1;
+}
+.carte .etiq {
+  font-size: 12.5px; color: var(--texte-doux); margin-top: 4px;
+  text-transform: uppercase; letter-spacing: .6px;
+}
+.carte .note { font-size: 12px; color: var(--texte-doux); margin-top: 6px; }
+.carte.alerte { border-color: var(--rouge); background: var(--rouge-fond); }
+.carte.alerte .valeur { color: var(--rouge); }
+.hausse { color: var(--vert); font-weight: 600; }
+.baisse { color: var(--rouge); font-weight: 600; }
+
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+
+.barre-ligne { margin-bottom: 13px; }
+.barre-ligne:last-child { margin-bottom: 0; }
+.barre-tete { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+.barre-tete .nom { color: var(--texte); }
+.barre-tete .nb { color: var(--accent-txt); font-weight: 700; }
+.barre-fond { background: var(--navy-fond); border-radius: 3px; height: 8px; }
+.barre-jauge { background: var(--navy); border-radius: 3px; height: 8px; }
+
+.pied {
+  text-align: center; font-size: 12px; color: var(--texte-doux);
+  padding: 22px 0 0; border-top: 1px solid var(--bord); margin-top: 30px;
+}
+
+/* ============================================================
+   ADAPTATION AUX PETITS ÉCRANS
+   ============================================================ */
+@media (max-width: 900px) {
+  body { flex-direction: column; }
+  .barre { width: 100%; height: auto; position: static; }
+  .barre nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px; }
+  .barre .rubrique { display: none; }
+  .barre a.item { margin-bottom: 0; }
+  .cartes { grid-template-columns: repeat(2, 1fr); }
+  .duo { grid-template-columns: 1fr; }
+  .contenu, .entete { padding-left: 18px; padding-right: 18px; }
+}
+@media (max-width: 560px) {
+  .rang > div { min-width: 100%; }
+  .dossier { flex-direction: column; align-items: flex-start; }
+  .cartes { grid-template-columns: 1fr; }
+}

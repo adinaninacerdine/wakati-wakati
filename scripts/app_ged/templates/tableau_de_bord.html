@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau de bord — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+<aside class="barre">
+  <div class="marque-zone">
+    <div class="marque">W A K A T I</div>
+    <div class="slogan">NDUWO UWO</div>
+  </div>
+
+  <nav>
+    <div class="rubrique">Documents</div>
+    <a class="item" href="{{ url_for('index') }}">
+      <span class="ico">▤</span> Courriers
+    </a>
+    <a class="item actif" href="{{ url_for('tableau_de_bord') }}">
+      <span class="ico">▦</span> Tableau de bord
+    </a>
+
+    <div class="rubrique">Suivi</div>
+    <a class="item" href="{{ url_for('index') }}#section-attente">
+      <span class="ico">◷</span> En signature
+      {% if kpi.en_attente %}<span class="pastille">{{ kpi.en_attente }}</span>{% endif %}
+    </a>
+    <a class="item" href="{{ url_for('index') }}#section-archiver">
+      <span class="ico">✓</span> À archiver
+      {% if kpi.a_archiver %}<span class="pastille">{{ kpi.a_archiver }}</span>{% endif %}
+    </a>
+
+    <div class="rubrique">Zoho</div>
+    <a class="item" href="https://sheet.zoho.com/sheet/open/avaji4d47ec1cbffc4f5184dc8b3127b83ae7" target="_blank" rel="noopener">
+      <span class="ico">▤</span> Registre 2026
+    </a>
+    <a class="item" href="https://workdrive.zoho.com/6hmdw50c5a29c26084da9be977e3081c55baa/teams/6hmdw50c5a29c26084da9be977e3081c55baa/ws/38345833623b6c50f40f4b8110bd1bf36334a/folders/files" target="_blank" rel="noopener">
+      <span class="ico">▣</span> WorkDrive
+    </a>
+  </nav>
+
+  <div class="bas">
+    <button class="bascule" onclick="basculerTheme()">
+      <span id="icone-theme">☾</span>
+      <span id="libelle-theme">Mode sombre</span>
+    </button>
+    {% if utilisateur %}
+      {{ utilisateur }}<br>
+      <a href="{{ url_for('deconnexion') }}" style="color:inherit;">Se déconnecter</a>
+    {% else %}
+      Huri Money SA
+    {% endif %}
+  </div>
+</aside>
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Tableau de bord documentaire</h1>
+    <div class="contexte">Période en cours : {{ kpi.mois_libelle }}</div>
+  </header>
+
+  <div class="contenu">
+
+    <div class="cartes">
+
+      <div class="carte">
+        <div class="valeur">{{ kpi.total }}</div>
+        <div class="etiq">Documents archivés</div>
+        <div class="note">Depuis l'ouverture du registre</div>
+      </div>
+
+      <div class="carte">
+        <div class="valeur">{{ kpi.ce_mois }}</div>
+        <div class="etiq">Ce mois — {{ kpi.mois_libelle }}</div>
+        <div class="note">
+          {% if kpi.evolution is not none %}
+            {% if kpi.evolution > 0 %}<span class="hausse">+{{ kpi.evolution }} %</span>
+            {% elif kpi.evolution < 0 %}<span class="baisse">{{ kpi.evolution }} %</span>
+            {% else %}Stable{% endif %}
+            par rapport au mois précédent
+          {% else %}
+            Premier mois de référence
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="carte {% if kpi.en_retard > 0 %}alerte{% endif %}">
+        <div class="valeur">{{ kpi.en_attente }}</div>
+        <div class="etiq">En attente de signature</div>
+        <div class="note">
+          {% if kpi.en_retard > 0 %}
+            {{ kpi.en_retard }} depuis 3 jours ou plus
+          {% else %}
+            Aucun retard signalé
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="carte">
+        <div class="valeur">{{ kpi.a_archiver }}</div>
+        <div class="etiq">Signés, à archiver</div>
+        <div class="note">
+          {% if kpi.a_archiver > 0 %}Action attendue{% else %}Rien en attente{% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    <div class="duo">
+
+      <div class="bloc">
+        <h2>Répartition par service</h2>
+        <div class="corps">
+          {% if kpi.par_service %}
+            {% for s in kpi.par_service %}
+            <div class="barre-ligne">
+              <div class="barre-tete">
+                <span class="nom">{{ s.nom }}</span>
+                <span class="nb">{{ s.nombre }}</span>
+              </div>
+              <div class="barre-fond">
+                <div class="barre-jauge" style="width: {{ s.part }}%;"></div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="vide">Aucune donnée disponible.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="bloc">
+        <h2>Répartition par type</h2>
+        <div class="corps">
+          {% if kpi.par_type %}
+            {% for t in kpi.par_type %}
+            <div class="barre-ligne">
+              <div class="barre-tete">
+                <span class="nom">{{ t.nom }}</span>
+                <span class="nb">{{ t.nombre }}</span>
+              </div>
+              <div class="barre-fond">
+                <div class="barre-jauge" style="width: {{ t.part }}%;"></div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="vide">Aucune donnée disponible.</p>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    <div class="duo">
+
+      <div class="bloc">
+        <h2>Sens du courrier</h2>
+        <div class="corps">
+          {% set total_sens = kpi.par_sens.Entrant + kpi.par_sens.Sortant %}
+          {% if total_sens > 0 %}
+            <div class="barre-ligne">
+              <div class="barre-tete">
+                <span class="nom">Entrant</span>
+                <span class="nb">{{ kpi.par_sens.Entrant }}</span>
+              </div>
+              <div class="barre-fond">
+                <div class="barre-jauge" style="width: {{ (kpi.par_sens.Entrant * 100 / total_sens)|round|int }}%;"></div>
+              </div>
+            </div>
+            <div class="barre-ligne">
+              <div class="barre-tete">
+                <span class="nom">Sortant</span>
+                <span class="nb">{{ kpi.par_sens.Sortant }}</span>
+              </div>
+              <div class="barre-fond">
+                <div class="barre-jauge" style="width: {{ (kpi.par_sens.Sortant * 100 / total_sens)|round|int }}%;"></div>
+              </div>
+            </div>
+          {% else %}
+            <p class="vide">Information renseignée à partir des nouveaux documents.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="bloc">
+        <h2>Principaux correspondants</h2>
+        <div class="corps">
+          {% if kpi.correspondants %}
+            {% for c in kpi.correspondants %}
+            <div class="barre-ligne">
+              <div class="barre-tete">
+                <span class="nom">{{ c.nom }}</span>
+                <span class="nb">{{ c.nombre }}</span>
+              </div>
+              <div class="barre-fond">
+                <div class="barre-jauge" style="width: {{ c.part }}%;"></div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <p class="vide">Information renseignée à partir des nouveaux documents.</p>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

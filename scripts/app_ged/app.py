@@ -9,7 +9,7 @@ import re
 import shutil
 import logging
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -64,7 +64,19 @@ except Exception as _notif_err:  # noqa: BLE001
 # ==========================================
 template_dir = os.path.join(CURRENT_DIR, 'templates')
 app = Flask(__name__, template_folder=template_dir)
-app.secret_key = "wakati_ged_rh_secret"
+# ==========================================
+# AUTHENTIFICATION
+# ==========================================
+AUTH_ACTIVE = os.getenv("GED_AUTH", "0") == "1"
+
+if AUTH_ACTIVE:
+    from auth import init_auth, connexion_requise
+    init_auth(app)
+else:
+    app.secret_key = "wakati_ged_rh_secret"
+
+    def connexion_requise(vue):
+        return vue
 
 MAP_FILE = ROOT_DIR / "folders_map.json"
 FICHIER_REGISTRE = ROOT_DIR / "registre_2026.csv"
@@ -107,8 +119,13 @@ ILES = {"NGA": "Ngazidja", "ANJ": "Anjouan", "MOH": "Mohéli"}
 
 COLONNES_REGISTRE = [
     'Nom du fichier', 'Service', 'Type', 'Date', 'Île', 'Objet',
-    'Branche GED', 'Emplacement physique', 'Statut', 'Lien Zoho'
+    'Branche GED', 'Emplacement physique', 'Statut', 'Lien Zoho',
+    'Sens', 'Correspondant'
 ]
+
+# Le sens determine si le correspondant est l'expediteur ou le destinataire.
+SENS = {"entrant": "Entrant", "sortant": "Sortant"}
+LIBELLE_CORRESPONDANT = {"entrant": "Expéditeur", "sortant": "Destinataire"}
 COLONNES_NOTIF = ['Statut Cliq', 'Statut Sign', 'Sign Request ID']
 
 
@@ -183,6 +200,21 @@ MOTIF_A_CLASSER = re.compile(
 )
 
 
+def correspondants_memorises():
+    """Correspondant saisi a la soumission, indexe par reference Sign.
+
+    Le nom de fichier depose par releve.py se termine par les 6 derniers
+    caracteres de la reference : c'est la cle de rapprochement.
+    """
+    index = {}
+    for rid, meta in charger_attente().items():
+        index[rid[-6:]] = {
+            "correspondant": meta.get("correspondant", ""),
+            "sens": meta.get("sens", "sortant"),
+        }
+    return index
+
+
 def lister_a_classer():
     """Courriers signes en attente de classement, avec metadonnees relues
     depuis le nom de fichier depose par releve.py."""
@@ -190,6 +222,7 @@ def lister_a_classer():
         return []
 
     resultat = []
+    memoire = correspondants_memorises()
     for chemin in sorted(DOSSIER_CLASSER.glob("*.pdf")):
         m = MOTIF_A_CLASSER.match(chemin.name)
         if m:
@@ -200,6 +233,9 @@ def lister_a_classer():
             date_doc = datetime.now().strftime("%Y-%m-%d")
             objet = chemin.stem
 
+        suffixe = m.group(5) if m else ""
+        memo = memoire.get(suffixe, {})
+
         resultat.append({
             "fichier": chemin.name,
             "service": service,
@@ -208,6 +244,8 @@ def lister_a_classer():
             "objet": objet.replace("_", " "),
             "service_lib": SERVICES.get(service, service or "Service inconnu"),
             "type_lib": TYPES.get(type_doc, type_doc or "Type inconnu"),
+            "correspondant": memo.get("correspondant", ""),
+            "sens": memo.get("sens", "sortant"),
         })
     return resultat
 
@@ -234,6 +272,7 @@ def lister_en_attente():
             "type_lib": TYPES.get(type_doc, type_doc or "—"),
             "soumis_affiche": soumis.strftime("%d/%m/%Y"),
             "jours": jours,
+            "correspondant": m.get("correspondant", ""),
         })
     # Les plus anciens en premier : ce sont eux qui demandent une relance.
     resultat.sort(key=lambda d: d["jours"], reverse=True)
@@ -306,6 +345,7 @@ def upload_avec_diagnostic(chemin, dossier_id):
 # ROUTE 1 — CLASSEMENT (responsable GED)
 # ==========================================
 @app.route('/', methods=['GET', 'POST'])
+@connexion_requise
 def index():
     if request.method == 'POST':
         service = request.form['service']
@@ -314,6 +354,8 @@ def index():
         num_ordre = request.form['num_ordre'].zfill(3)
         objet = request.form['objet']
         ile = request.form.get('ile', '')
+        sens = request.form.get('sens', 'entrant')
+        correspondant = (request.form.get('correspondant') or '').strip()
         besoin_signature = request.form.get('signature') in ('on', 'true', '1')
 
         # Deux origines possibles : un courrier deja signe qui attend dans
@@ -388,7 +430,7 @@ def index():
                     "nom_fichier": nouveau_nom,
                     "service": SERVICES[service],
                     "type_doc": TYPES[type_doc],
-                    "deposant": ILES.get(ile, '') or "GED",
+                    "deposant": correspondant or ILES.get(ile, '') or "GED",
                     "date": date_doc,
                     "workdrive_url": permalink,
                     "sheet_url": lien_registre,
@@ -405,7 +447,7 @@ def index():
             row_data_csv = [
                 nouveau_nom, SERVICES[service], TYPES[type_doc], date_doc,
                 ILES.get(ile, ''), objet, 'Courriers', 'Zoho WorkDrive',
-                'Classé', permalink
+                'Classé', permalink, SENS.get(sens, ''), correspondant
             ]
             if COLONNES_NOTIF_ACTIVES:
                 row_data_csv += [statut_cliq, statut_sign, sign_id]
@@ -423,7 +465,9 @@ def index():
                 "Branche GED": "Courriers",
                 "Emplacement physique": "Zoho WorkDrive",
                 "Statut": "Classé",
-                "Lien Zoho": permalink
+                "Lien Zoho": permalink,
+                "Sens": SENS.get(sens, ''),
+                "Correspondant": correspondant
             }
             if COLONNES_NOTIF_ACTIVES:
                 row_data_dict["Statut Cliq"] = statut_cliq
@@ -480,6 +524,7 @@ def index():
 # ROUTE 2 — SOUMISSION EN SIGNATURE (rédacteurs)
 # ==========================================
 @app.route('/soumettre', methods=['GET', 'POST'])
+@connexion_requise
 def soumettre():
     if request.method == 'POST':
         if not NOTIFIER_DISPONIBLE:
@@ -492,6 +537,8 @@ def soumettre():
         date_doc = request.form['date_doc']
         objet = request.form['objet']
         ile = request.form.get('ile', '')
+        sens = request.form.get('sens', 'sortant')
+        correspondant = (request.form.get('correspondant') or '').strip()
         deposant = request.form.get('deposant', '').strip() or "Non précisé"
 
         if not fichier or fichier.filename == '':
@@ -530,6 +577,8 @@ def soumettre():
                 "objet": objet,
                 "objet_nettoye": objet_nettoye,
                 "ile": ile,
+                "sens": sens,
+                "correspondant": correspondant,
                 "deposant": deposant,
                 "soumis_le": datetime.now().isoformat(timespec='seconds'),
             })
@@ -558,6 +607,7 @@ def soumettre():
 # API — suggestion du numéro d'ordre
 # ==========================================
 @app.route('/api/dernier-numero')
+@connexion_requise
 def api_dernier_numero():
     service = request.args.get('service', '')
     type_doc = request.args.get('type_doc', '')
@@ -592,6 +642,7 @@ def boucle_releve():
 
 
 @app.route('/actualiser')
+@connexion_requise
 def actualiser():
     """Bouton « Vérifier maintenant » — pour ne pas attendre le cycle suivant."""
     ok, err = passe_de_releve()
@@ -600,6 +651,101 @@ def actualiser():
     else:
         flash(f"Vérification impossible : {err}", "error")
     return redirect(url_for('index'))
+
+
+def calculer_indicateurs():
+    """Indicateurs de pilotage, calcules depuis le registre local.
+
+    Source : registre_2026.csv, alimente a chaque archivage. Les documents
+    eux-memes restent dans WorkDrive et le registre de reference dans Zoho
+    Sheet : ce fichier n'est qu'un journal local servant l'affichage.
+    """
+    lignes = []
+    if os.path.exists(FICHIER_REGISTRE):
+        try:
+            with open(FICHIER_REGISTRE, 'r', encoding='utf-8-sig') as f:
+                toutes = list(csv.reader(f, delimiter=';'))
+                lignes = toutes[1:] if len(toutes) > 1 else []
+        except Exception:
+            logging.error("Lecture du registre : %s", traceback.format_exc())
+
+    aujourdhui = datetime.now()
+    mois_courant = aujourdhui.strftime('%Y-%m')
+    # Mois precedent, sans dependance a dateutil
+    premier = aujourdhui.replace(day=1)
+    mois_precedent = (premier - timedelta(days=1)).strftime('%Y-%m')
+
+    total = 0
+    ce_mois = 0
+    mois_avant = 0
+    par_service = {}
+    par_type = {}
+    par_sens = {'Entrant': 0, 'Sortant': 0}
+    correspondants = {}
+
+    for ligne in lignes:
+        if not ligne or not ligne[0]:
+            continue
+        total += 1
+
+        date_doc = ligne[3] if len(ligne) > 3 else ''
+        if date_doc.startswith(mois_courant):
+            ce_mois += 1
+        elif date_doc.startswith(mois_precedent):
+            mois_avant += 1
+
+        service = ligne[1] if len(ligne) > 1 else ''
+        if service:
+            par_service[service] = par_service.get(service, 0) + 1
+
+        type_doc = ligne[2] if len(ligne) > 2 else ''
+        if type_doc:
+            par_type[type_doc] = par_type.get(type_doc, 0) + 1
+
+        sens = ligne[10] if len(ligne) > 10 else ''
+        if sens in par_sens:
+            par_sens[sens] += 1
+
+        corr = ligne[11].strip() if len(ligne) > 11 else ''
+        if corr:
+            correspondants[corr] = correspondants.get(corr, 0) + 1
+
+    def classer(dico, limite=6):
+        items = sorted(dico.items(), key=lambda x: x[1], reverse=True)[:limite]
+        maxi = items[0][1] if items else 1
+        return [{'nom': n, 'nombre': v, 'part': round(v * 100 / maxi)}
+                for n, v in items]
+
+    # Evolution par rapport au mois precedent
+    if mois_avant > 0:
+        evolution = round((ce_mois - mois_avant) * 100 / mois_avant)
+    else:
+        evolution = None
+
+    attente = lister_en_attente()
+    en_retard = [d for d in attente if d['jours'] >= 3]
+
+    return {
+        'total': total,
+        'ce_mois': ce_mois,
+        'mois_avant': mois_avant,
+        'evolution': evolution,
+        'en_attente': len(attente),
+        'en_retard': len(en_retard),
+        'a_archiver': len(lister_a_classer()),
+        'par_service': classer(par_service),
+        'par_type': classer(par_type),
+        'par_sens': par_sens,
+        'correspondants': classer(correspondants, 5),
+        'mois_libelle': aujourdhui.strftime('%m/%Y'),
+    }
+
+
+@app.route('/tableau-de-bord')
+@connexion_requise
+def tableau_de_bord():
+    return render_template('tableau_de_bord.html',
+                           kpi=calculer_indicateurs())
 
 
 def ouvrir_navigateur():
@@ -626,6 +772,14 @@ if __name__ == '__main__':
 
     print(f"[GED] Relève auto    : toutes les {INTERVALLE_RELEVE_MIN} min")
 
-    threading.Thread(target=ouvrir_navigateur, daemon=True).start()
+    # En conteneur, l'application doit ecouter sur toutes les interfaces et
+    # ne pas tenter d'ouvrir un navigateur.
+    en_conteneur = os.getenv("GED_CONTENEUR", "0") == "1"
+    hote = "0.0.0.0" if en_conteneur else "127.0.0.1"
+
+    print(f"[GED] Authentification: {'active' if AUTH_ACTIVE else 'DESACTIVEE (local)'}")
+
+    if not en_conteneur:
+        threading.Thread(target=ouvrir_navigateur, daemon=True).start()
     threading.Thread(target=boucle_releve, daemon=True).start()
-    app.run(debug=False, port=5000)
+    app.run(debug=False, host=hote, port=5000)

@@ -492,23 +492,45 @@ def _dimensions_page(pdf_bytes):
 
 
 def _nombre_de_pages(pdf_bytes):
-    """Nombre de pages du PDF, sans dependance externe.
+    """Nombre de pages du PDF.
 
-    On compte les objets /Type /Page dans la structure du fichier. Methode
-    volontairement simple : si elle echoue, on retombe sur 1 page, ce qui
-    place la signature en premiere page — comportement precedent.
+    La lecture directe de la structure du fichier (/Count, /Type /Page) s'est
+    revelee peu fiable : sur certains documents elle surestime, la signature
+    part alors sur une page inexistante et la derniere page reelle ne recoit
+    qu'un paraphe. On passe donc par une bibliotheque quand elle est
+    disponible, et la lecture brute ne sert plus que de dernier recours.
     """
+    import io as _io
+
+    # 1. pypdf / PyPDF2 : lecture fiable de l'arborescence des pages.
+    for module, classe in (("pypdf", "PdfReader"), ("PyPDF2", "PdfReader")):
+        try:
+            mod = __import__(module)
+            lecteur = getattr(mod, classe)(_io.BytesIO(pdf_bytes))
+            n = len(lecteur.pages)
+            if n > 0:
+                return n
+        except Exception:  # noqa: BLE001
+            continue
+
+    # 2. Repli : lecture brute. Le /Count du noeud racine est le plus sur,
+    #    mais un PDF revise peut en contenir plusieurs — on prend le minimum
+    #    plutot que le maximum, pour ne jamais viser une page inexistante.
     try:
         import re as _re
-        # Le compteur fiable est /Count dans le noeud racine des pages.
-        comptes = _re.findall(rb"/Type\s*/Pages[^>]*?/Count\s+(\d+)", pdf_bytes)
+        comptes = [int(c) for c in
+                   _re.findall(rb"/Type\s*/Pages[^>]*?/Count\s+(\d+)", pdf_bytes)]
+        comptes = [c for c in comptes if c > 0]
         if comptes:
-            return max(int(c) for c in comptes)
-        # Repli : on denombre les objets Page individuels.
+            return min(comptes)
+
         pages = _re.findall(rb"/Type\s*/Page[^s]", pdf_bytes)
-        return max(1, len(pages))
+        if pages:
+            return len(pages)
     except Exception:  # noqa: BLE001
-        return 1
+        pass
+
+    return 1
 
 
 
@@ -594,11 +616,17 @@ def send_for_signature(connector, doc, pdf_bytes=None, pdf_path=None):
     # La signature doit figurer sur la DERNIERE page du courrier, comme sur un
     # document papier. SIGN_FIELD_PAGE permet de forcer une page precise
     # (indexee a 0) si un type de document l'exige.
+    nb_pages_doc = _nombre_de_pages(pdf_bytes)
+
     page_forcee = _get("SIGN_FIELD_PAGE", None)
     if page_forcee is None:
-        page_signature = max(0, _nombre_de_pages(pdf_bytes) - 1)
+        page_signature = max(0, nb_pages_doc - 1)
     else:
         page_signature = page_forcee
+
+    # Garde-fou : si le comptage se trompait, la signature viserait une page
+    # inexistante et seul un paraphe apparaitrait en fin de document.
+    page_signature = max(0, min(page_signature, nb_pages_doc - 1))
 
     # Placement PROPORTIONNEL a la taille reelle de la page, pas en valeurs
     # absolues : un courrier en Letter, Legal ou format photocopieur n'a pas
@@ -626,10 +654,12 @@ def send_for_signature(connector, doc, pdf_bytes=None, pdf_path=None):
     if _get("SIGN_FIELD_Y", None) is not None:
         y_coord = _get("SIGN_FIELD_Y")
 
-    print(f"[SIGN] Page {page_signature + 1} — format {largeur:.0f}x{hauteur:.0f} pts "
-          f"— signature en ({x_coord}, {y_coord})")
+    nb_pages = nb_pages_doc
 
-    champ_signature = {
+    print(f"[SIGN] {nb_pages} page(s) — format {largeur:.0f}x{hauteur:.0f} pts "
+          f"— signature page {page_signature + 1} en ({x_coord}, {y_coord})")
+
+    champs = [{
         "field_name": "Signature",
         "field_label": "Signature",
         "field_type_name": "Signature",
@@ -641,7 +671,38 @@ def send_for_signature(connector, doc, pdf_bytes=None, pdf_path=None):
         "abs_width": largeur_champ,
         "abs_height": hauteur_champ,
         "is_mandatory": True,
-    }
+    }]
+
+    # --- Paraphes ---------------------------------------------------------
+    # Usage documentaire : chaque page est paraphee, la derniere est signee.
+    # Desactivable via PARAPHER_PAGES = False dans notifier_config.py.
+    if _get("PARAPHER_PAGES", True) and nb_pages > 1:
+        p_largeur = _get("PARAPHE_WIDTH", 60)
+        p_hauteur = _get("PARAPHE_HEIGHT", 30)
+        # Bas de page, a droite : 78 % de la largeur, 90 % de la hauteur.
+        p_x = round(largeur * _get("PARAPHE_POS_X", 0.78))
+        p_y = round(hauteur * _get("PARAPHE_POS_Y", 0.90))
+        p_x = max(10, min(p_x, largeur - p_largeur - 10))
+        p_y = max(10, min(p_y, hauteur - p_hauteur - 10))
+
+        for page in range(nb_pages):
+            if page == page_signature:
+                continue  # la page de signature n'est pas paraphee
+            champs.append({
+                "field_name": f"Paraphe_{page + 1}",
+                "field_label": "Paraphe",
+                "field_type_name": "Initial",
+                "field_category": "initial",
+                "document_id": document_id,
+                "page_no": page,
+                "x_coord": p_x,
+                "y_coord": p_y,
+                "abs_width": p_largeur,
+                "abs_height": p_hauteur,
+                "is_mandatory": True,
+            })
+
+        print(f"[SIGN] {len(champs) - 1} paraphe(s) ajoute(s)")
 
     submit_body = {
         "requests": {
@@ -651,7 +712,7 @@ def send_for_signature(connector, doc, pdf_bytes=None, pdf_path=None):
                 "recipient_email": dg_email,
                 "recipient_name": dg_name,
                 "verify_recipient": False,
-                "fields": [champ_signature],
+                "fields": champs,
             }]
         }
     }

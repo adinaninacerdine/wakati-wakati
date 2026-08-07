@@ -1,0 +1,32 @@
+# Environnements virtuels : l'image installe ses propres dépendances.
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets : montés en volume, jamais copiés dans l'image.
+zoho_config.py
+notifier_config.py
+auth_config.py
+*.backup
+*.backup-*
+zoho_config.py.avant-*
+
+# Caches de jetons : régénérés au premier appel.
+.zoho_token_cache.json
+.cliq_token_cache.json
+.mail_token_cache.json
+
+# Données de travail : montées en volume persistant.
+en_attente.json
+a_classer/
+registre_2026.csv
+ged_rh_errors.log
+_tmp/
+
+# Divers
+.git/
+.gitignore
+*.md
+Dockerfile
+docker-compose.yml
