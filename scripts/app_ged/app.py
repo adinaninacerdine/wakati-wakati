@@ -722,6 +722,78 @@ def actualiser():
     return redirect(url_for('index'))
 
 
+def indicateurs_visa():
+    """Compteurs du circuit de visa, lus dans visas.json.
+
+    Les anciens indicateurs interrogeaient en_attente.json, fichier de
+    Zoho Sign gele depuis l'expiration de la licence : ils affichaient
+    zero en permanence alors que des documents attendaient reellement.
+    """
+    vide = {"a_viser": 0, "a_viser_retard": 0, "approuves": 0,
+            "suites": 0, "suites_retard": 0, "retours": 0,
+            "delai_moyen": None, "vises_mois": 0}
+
+    fichier = ROOT_DIR / "visas.json"
+    if not fichier.exists():
+        return vide
+
+    try:
+        donnees = json.loads(fichier.read_text(encoding="utf-8"))
+    except Exception:
+        return vide
+
+    maintenant = datetime.now()
+    mois = maintenant.strftime("%Y-%m")
+    res = dict(vide)
+    delais = []
+
+    for d in donnees.values():
+        statut = d.get("statut", "")
+
+        if statut == "attente":
+            res["a_viser"] += 1
+            try:
+                jours = (maintenant - datetime.fromisoformat(d.get("depose_le", ""))).days
+                if jours >= 3:
+                    res["a_viser_retard"] += 1
+            except (ValueError, TypeError):
+                pass
+
+        elif statut == "approuve":
+            res["approuves"] += 1
+
+        elif statut == "retourne":
+            res["retours"] += 1
+
+        # Delai entre depot et visa — la mesure du gain de la digitalisation.
+        if d.get("vise_le") and d.get("depose_le"):
+            try:
+                ecart = (datetime.fromisoformat(d["vise_le"])
+                         - datetime.fromisoformat(d["depose_le"]))
+                delais.append(ecart.total_seconds() / 3600)
+            except (ValueError, TypeError):
+                pass
+            if d["vise_le"].startswith(mois):
+                res["vises_mois"] += 1
+
+        # Suites a donner encore ouvertes
+        if d.get("action_statut") == "ouverte":
+            res["suites"] += 1
+            try:
+                jours = (maintenant - datetime.fromisoformat(d.get("vise_le", ""))).days
+                if jours >= 3:
+                    res["suites_retard"] += 1
+            except (ValueError, TypeError):
+                pass
+
+    if delais:
+        moyenne = sum(delais) / len(delais)
+        res["delai_moyen"] = (f"{moyenne:.0f} h" if moyenne < 48
+                              else f"{moyenne / 24:.1f} j")
+
+    return res
+
+
 def calculer_indicateurs():
     """Indicateurs de pilotage, calcules depuis le registre local.
 
@@ -794,7 +866,10 @@ def calculer_indicateurs():
     attente = lister_en_attente()
     en_retard = [d for d in attente if d['jours'] >= 3]
 
+    visa = indicateurs_visa()
+
     return {
+        'visa': visa,
         'total': total,
         'ce_mois': ce_mois,
         'mois_avant': mois_avant,

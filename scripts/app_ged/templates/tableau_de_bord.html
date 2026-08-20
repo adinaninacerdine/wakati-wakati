@@ -44,12 +44,12 @@
         </div>
       </div>
 
-      <div class="carte {% if kpi.en_retard > 0 %}alerte{% endif %}">
-        <div class="valeur">{{ kpi.en_attente }}</div>
-        <div class="etiq">En attente de signature</div>
+      <div class="carte {% if kpi.visa.a_viser_retard > 0 %}alerte{% endif %}">
+        <div class="valeur">{{ kpi.visa.a_viser }}</div>
+        <div class="etiq">En attente de visa</div>
         <div class="note">
-          {% if kpi.en_retard > 0 %}
-            {{ kpi.en_retard }} depuis 3 jours ou plus
+          {% if kpi.visa.a_viser_retard > 0 %}
+            {{ kpi.visa.a_viser_retard }} depuis 3 jours ou plus
           {% else %}
             Aucun retard signalé
           {% endif %}
@@ -64,7 +64,53 @@
         </div>
       </div>
 
+      <div class="carte {% if kpi.visa.suites_retard > 0 %}alerte{% endif %}">
+        <div class="valeur">{{ kpi.visa.suites }}</div>
+        <div class="etiq">Suites à donner</div>
+        <div class="note">
+          {% if kpi.visa.suites_retard > 0 %}
+            {{ kpi.visa.suites_retard }} ouvertes depuis 3 jours ou plus
+          {% else %}
+            Instructions de la Direction en cours
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="carte">
+        <div class="valeur">{{ kpi.visa.delai_moyen or '—' }}</div>
+        <div class="etiq">Délai moyen de visa</div>
+        <div class="note">
+          Entre la transmission et la décision
+        </div>
+      </div>
+
     </div>
+
+    {# Signaux exigeant une decision : regroupes en tete, hors des
+       repartitions qui relevent du suivi d'activite. #}
+    {% if kpi.visa.approuves or kpi.visa.retours %}
+    <div class="bloc" style="margin-bottom:22px;">
+      <h2>Ce qui demande une action</h2>
+      <div class="corps">
+        {% if kpi.visa.approuves %}
+        <div class="barre-ligne">
+          <div class="barre-tete">
+            <span class="nom">Approuvés &mdash; en attente de signature manuscrite</span>
+            <span class="nb">{{ kpi.visa.approuves }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if kpi.visa.retours %}
+        <div class="barre-ligne">
+          <div class="barre-tete">
+            <span class="nom" style="color:var(--rouge);">Retournés au service &mdash; à corriger</span>
+            <span class="nb" style="color:var(--rouge);">{{ kpi.visa.retours }}</span>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     <div class="duo">
 
