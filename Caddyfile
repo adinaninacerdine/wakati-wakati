@@ -16,7 +16,11 @@ ged.wakati.km {
 
         # L'application ne doit jamais être affichée dans un cadre :
         # protection contre le détournement de clic.
-        X-Frame-Options "DENY"
+        # L'application peut etre affichee dans un cadre, mais UNIQUEMENT
+        # depuis le site officiel. Sans cette restriction, un site tiers
+        # pourrait la charger en cadre invisible et faire approuver un
+        # document a l'insu du signataire.
+        Content-Security-Policy "frame-ancestors 'self' https://wakati.km https://www.wakati.km"
 
         X-Content-Type-Options "nosniff"
         Referrer-Policy "strict-origin-when-cross-origin"
@@ -63,3 +67,28 @@ ged.wakati.km {
 #           proxy_read_timeout 300s;
 #       }
 #   }
+
+erp.wakati.km {
+    encode gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+
+    # Longpolling : le chat et les notifications Odoo passent par 8072.
+    @longpolling path /longpolling/* /websocket
+    handle @longpolling {
+        reverse_proxy wakati_odoo:8072
+    }
+
+    handle {
+        reverse_proxy wakati_odoo:8069 {
+            transport http {
+                read_timeout 720s
+                write_timeout 720s
+            }
+        }
+    }
+}
