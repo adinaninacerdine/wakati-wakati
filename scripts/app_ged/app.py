@@ -60,10 +60,42 @@ except Exception as _notif_err:  # noqa: BLE001
     NOTIFIER_DISPONIBLE = False
 
 # ==========================================
+# CIRCUIT DE VISA (courriers entrants)
+# ==========================================
+# Le visa remplace Zoho Sign pour les courriers entrants : le DG atteste
+# avoir vu le document sans consommer d'enveloppe. Les sortants, qui
+# engagent l'entreprise, continuent de passer par la signature.
+try:
+    from visa import (bp_visa, init_visa, deposer_pour_visa,
+                      lister_a_viser, lister_suites, lister_retournes,
+                      lister_approuves)
+    VISA_DISPONIBLE = True
+except Exception as _visa_err:  # noqa: BLE001
+    print(f"[GED] visa.py indisponible ({_visa_err}) — circuit de visa desactive.")
+    VISA_DISPONIBLE = False
+
+    def lister_a_viser(*a, **k):
+        return []
+
+    def lister_suites(*a, **k):
+        return []
+
+    def lister_approuves(*a, **k):
+        return []
+
+    def lister_retournes(*a, **k):
+        return []
+
+
+# ==========================================
 # FLASK & ARBORESCENCE
 # ==========================================
 template_dir = os.path.join(CURRENT_DIR, 'templates')
 app = Flask(__name__, template_folder=template_dir)
+if VISA_DISPONIBLE:
+    app.register_blueprint(bp_visa)
+
+
 # ==========================================
 # AUTHENTIFICATION
 # ==========================================
@@ -77,6 +109,10 @@ else:
 
     def connexion_requise(vue):
         return vue
+
+if VISA_DISPONIBLE:
+    _visa_protege = True
+    init_visa(app, connexion_requise)
 
 MAP_FILE = ROOT_DIR / "folders_map.json"
 FICHIER_REGISTRE = ROOT_DIR / "registre_2026.csv"
@@ -93,6 +129,11 @@ ZOHO_SHEET_WORKSHEET_ID = "DATA"
 
 # Passe a True apres avoir ajoute les 3 en-tetes dans la feuille.
 COLONNES_NOTIF_ACTIVES = False
+
+# Zoho Sign indisponible : les sortants suivent le circuit interne
+# (approbation DG, signature manuscrite, depot du scan).
+# Repasser a True une fois la licence retablie.
+SIGN_DISPONIBLE = False
 
 DEBUG_UPLOAD = False
 
@@ -517,7 +558,11 @@ def index():
 
     return render_template('index.html', registre=registre, services=SERVICES,
                            types=TYPES, iles=ILES, a_classer=a_classer,
-                           en_attente=lister_en_attente())
+                           en_attente=lister_en_attente(),
+                           a_viser=lister_a_viser(SERVICES, TYPES),
+                           suites=lister_suites(SERVICES, TYPES),
+                           retournes=lister_retournes(SERVICES, TYPES),
+                           approuves=lister_approuves(SERVICES, TYPES))
 
 
 # ==========================================
@@ -561,6 +606,30 @@ def soumettre():
             # qui n'existe pas encore a ce stade.
             nom_projet = (f"PROJET_HM26-{service}-{type_doc}_"
                           f"{date_doc.replace('-', '')}_{objet_nettoye}.pdf")
+
+            # Aiguillage : un courrier ENTRANT part au visa interne, un
+            # SORTANT en signature electronique. Le visa ne consomme aucune
+            # enveloppe Zoho Sign.
+            # Sans licence Zoho Sign, TOUT passe par le circuit interne :
+            # les reçus au visa, les émis à l'approbation puis à la
+            # signature manuscrite.
+            if VISA_DISPONIBLE and (sens == "entrant" or not SIGN_DISPONIBLE):
+                try:
+                    ref = deposer_pour_visa(chemin_temp, {
+                        "service": service,
+                        "type_doc": type_doc,
+                        "date_doc": date_doc,
+                        "objet": objet,
+                        "sens": sens,
+                        "correspondant": correspondant,
+                        "deposant": deposant,
+                    })
+                    flash(f"✅ Transmis à la Direction Générale pour visa. "
+                          f"Référence : {ref}", "success")
+                except Exception as exc:  # noqa: BLE001
+                    logging.error("Dépôt pour visa : %s", traceback.format_exc())
+                    flash(f"❌ Dépôt pour visa impossible : {exc}", "error")
+                return redirect(url_for('index'))
 
             doc = {"numero": "Projet", "nom_fichier": nom_projet}
             ok, detail = send_for_signature(z, doc, pdf_bytes=contenu_pdf)

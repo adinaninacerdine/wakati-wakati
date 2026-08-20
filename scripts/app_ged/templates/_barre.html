@@ -1,0 +1,43 @@
+{# Barre laterale partagee — modifier ICI et nulle part ailleurs.
+   Chaque page passe la variable `page` : courriers | tableau | visa #}
+<aside class="barre">
+  <div class="marque-zone">
+    <div class="marque">W A K A T I</div>
+    <div class="slogan">NDUWO UWO</div>
+  </div>
+
+  <nav>
+    <div class="rubrique">Documents</div>
+    <a class="item {% if page == 'courriers' %}actif{% endif %}" href="{{ url_for('index') }}">
+      <span class="ico">▤</span> Courriers
+    </a>
+    <a class="item {% if page == 'visa' %}actif{% endif %}" href="/visa">
+      <span class="ico">✎</span> Visa Direction
+      {% if nb_a_viser %}<span class="pastille">{{ nb_a_viser }}</span>{% endif %}
+    </a>
+    <a class="item {% if page == 'tableau' %}actif{% endif %}" href="{{ url_for('tableau_de_bord') }}">
+      <span class="ico">▦</span> Tableau de bord
+    </a>
+
+    <div class="rubrique">Zoho</div>
+    <a class="item" href="https://sheet.zoho.com/sheet/open/avaji4d47ec1cbffc4f5184dc8b3127b83ae7" target="_blank" rel="noopener">
+      <span class="ico">▤</span> Registre 2026
+    </a>
+    <a class="item" href="https://workdrive.zoho.com/6hmdw50c5a29c26084da9be977e3081c55baa/teams/6hmdw50c5a29c26084da9be977e3081c55baa/ws/38345833623b6c50f40f4b8110bd1bf36334a/folders/files" target="_blank" rel="noopener">
+      <span class="ico">▣</span> WorkDrive
+    </a>
+  </nav>
+
+  <div class="bas">
+    <button class="bascule" onclick="basculerTheme()">
+      <span id="icone-theme">☾</span>
+      <span id="libelle-theme">Mode sombre</span>
+    </button>
+    {% if utilisateur %}
+      {{ utilisateur }}<br>
+      <a href="{{ url_for('deconnexion') }}" style="color:inherit;">Se déconnecter</a>
+    {% else %}
+      Huri Money SA
+    {% endif %}
+  </div>
+</aside>

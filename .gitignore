@@ -30,3 +30,12 @@ a_classer/
 audit_social_*.txt
 social_accounts.csv
 utm_campaigns.csv
+auth_config.py
+ged.log
+
+visas.json
+ged.log
+a_viser/
+auth_config.py
+
+*.avant-*

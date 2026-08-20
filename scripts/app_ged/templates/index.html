@@ -12,53 +12,8 @@
 <!-- ============================================================
      BARRE LATÉRALE
      ============================================================ -->
-<aside class="barre">
-  <div class="marque-zone">
-    <div class="marque">W A K A T I</div>
-    <div class="slogan">NDUWO UWO</div>
-  </div>
-
-  <nav>
-    <div class="rubrique">Documents</div>
-    <a class="item actif" href="{{ url_for('index') }}">
-      <span class="ico">▤</span> Courriers
-    </a>
-    <a class="item" href="{{ url_for('tableau_de_bord') }}">
-      <span class="ico">▦</span> Tableau de bord
-    </a>
-
-    <div class="rubrique">Suivi</div>
-    <a class="item" href="#section-attente">
-      <span class="ico">◷</span> En signature
-      {% if en_attente %}<span class="pastille">{{ en_attente|length }}</span>{% endif %}
-    </a>
-    <a class="item" href="#section-archiver">
-      <span class="ico">✓</span> À archiver
-      {% if a_classer %}<span class="pastille">{{ a_classer|length }}</span>{% endif %}
-    </a>
-
-    <div class="rubrique">Zoho</div>
-    <a class="item" href="https://sheet.zoho.com/sheet/open/avaji4d47ec1cbffc4f5184dc8b3127b83ae7" target="_blank" rel="noopener">
-      <span class="ico">▤</span> Registre 2026
-    </a>
-    <a class="item" href="https://workdrive.zoho.com/6hmdw50c5a29c26084da9be977e3081c55baa/teams/6hmdw50c5a29c26084da9be977e3081c55baa/ws/38345833623b6c50f40f4b8110bd1bf36334a/folders/files" target="_blank" rel="noopener">
-      <span class="ico">▣</span> WorkDrive
-    </a>
-  </nav>
-
-  <div class="bas">
-    <button class="bascule" onclick="basculerTheme()">
-      <span id="icone-theme">☾</span>
-      <span id="libelle-theme">Mode sombre</span>
-    </button>
-    {% if utilisateur %}
-      {{ utilisateur }}<br>
-      <a href="{{ url_for('deconnexion') }}" style="color:inherit;">Se déconnecter</a>
-    {% else %}
-      Huri Money SA
-    {% endif %}
-  </div>
-</aside>
+{% set page = 'courriers' %}
+{% include '_barre.html' %}
 
 <!-- ============================================================
      ZONE PRINCIPALE
@@ -80,12 +35,12 @@
 
     <!-- 1. SOUMETTRE -->
     <section class="bloc">
-      <h2>1 &nbsp;·&nbsp; Soumettre un courrier à la signature</h2>
+      <h2><span id="titre_soumission">1 &nbsp;·&nbsp; Soumettre un courrier</span></h2>
       <div class="corps">
         <form method="POST" action="{{ url_for('soumettre') }}" enctype="multipart/form-data">
 
           <div class="champ">
-            <label for="s_pdf">Projet de courrier (PDF)</label>
+            <label for="s_pdf" id="s_lbl_pdf">Courrier (PDF)</label>
             <input type="file" id="s_pdf" name="pdf" accept=".pdf" required>
           </div>
 
@@ -123,10 +78,10 @@
 
           <div class="rang">
             <div class="champ">
-              <label for="s_sens">Sens du courrier</label>
+              <label for="s_sens">Origine du document</label>
               <select id="s_sens" name="sens" onchange="majLibelle('s')">
-                <option value="sortant">Sortant</option>
-                <option value="entrant">Entrant</option>
+                <option value="sortant">Émis &mdash; signature du DG</option>
+                <option value="entrant">Reçu &mdash; visa du DG</option>
               </select>
             </div>
             <div class="champ">
@@ -144,15 +99,14 @@
 
           <input type="hidden" name="deposant" value="Service GED">
 
-          <button type="submit" class="pleine">Envoyer à la signature</button>
+          <button type="submit" class="pleine" id="s_bouton">Envoyer</button>
           <p style="font-size:12.5px;color:var(--texte-doux);margin:10px 0 0;">
-            Le numéro d'ordre sera attribué au moment de l'archivage, après signature.
+            <span id="s_note">Le numéro d'ordre sera attribué à l'archivage.</span>
           </p>
         </form>
       </div>
     </section>
 
-    <!-- 2. EN ATTENTE -->
     <section class="bloc" id="section-attente">
       <h2>
         <span>2 &nbsp;·&nbsp; En attente de signature
@@ -168,7 +122,7 @@
               <div class="objet">{{ d.objet }}</div>
               <div class="meta">{{ d.service_lib }} &middot; {{ d.type_lib }}{% if d.correspondant %} &middot; {{ d.correspondant }}{% endif %} &middot; envoyé le {{ d.soumis_affiche }}</div>
             </div>
-            <span class="etat {% if d.jours >= 3 %}tarde{% endif %}">
+            <span class="etat {% if d.jours >= 3 %}tarde{% else %}encours{% endif %}">
               {% if d.jours == 0 %}Aujourd'hui
               {% elif d.jours == 1 %}1 jour
               {% else %}{{ d.jours }} jours{% endif %}
@@ -181,7 +135,131 @@
       </div>
     </section>
 
-    <!-- 3. SIGNÉS -->
+    <section class="bloc" id="section-signature">
+      <h2>Approuvés &mdash; en attente de signature manuscrite
+        {% if approuves %}<span class="compte">{{ approuves|length }}</span>{% endif %}
+      </h2>
+      <div class="corps">
+        {% if approuves %}
+          <p class="vide" style="margin-bottom:14px;">
+            Imprimez le courrier, faites-le signer, puis déposez le scan signé.
+          </p>
+          {% for a in approuves %}
+          <div class="dossier" style="align-items:flex-start;">
+            <div style="flex:1;">
+              <div class="objet">{{ a.objet }}</div>
+              <div class="meta">
+                {{ a.service_lib }} &middot; {{ a.type_lib }}
+                {% if a.correspondant %}&middot; {{ a.correspondant }}{% endif %}
+                &middot; <strong class="marque-etat vise">Approuvé</strong>
+              </div>
+              {% if a.observations %}
+              <div style="margin-top:8px;padding:10px 14px;background:var(--navy-fond);
+                          border-left:3px solid var(--navy);border-radius:3px;
+                          font-size:13.5px;white-space:pre-wrap;">{{ a.observations }}</div>
+              {% endif %}
+              <div class="meta" style="margin-top:6px;">
+                Approuvé par {{ a.vise_par }}{% if a.jours %} &mdash; il y a {{ a.jours }} jour(s){% endif %}
+              </div>
+            </div>
+            <form method="POST" enctype="multipart/form-data"
+                  action="{{ url_for('visa.deposer_scan', reference=a.reference) }}"
+                  style="min-width:230px;">
+              <label style="font-size:12px;">Scan signé (PDF)</label>
+              <input type="file" name="scan" accept=".pdf" required
+                     style="font-size:12px;margin-bottom:6px;">
+              <button type="submit" class="mineur" style="width:100%;">
+                Déposer le scan signé
+              </button>
+            </form>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="vide">Aucun courrier en attente de signature.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="bloc" id="section-retours">
+      <h2>Retournés par la Direction &mdash; à corriger
+        {% if retournes %}<span class="compte">{{ retournes|length }}</span>{% endif %}
+      </h2>
+      <div class="corps">
+        {% if retournes %}
+          {% for r in retournes %}
+          <div class="dossier" style="align-items:flex-start;">
+            <div style="flex:1;">
+              <div class="objet">{{ r.objet }}</div>
+              <div class="meta">
+                {{ r.service_lib }} &middot; {{ r.type_lib }}
+                {% if r.correspondant %}&middot; {{ r.correspondant }}{% endif %}
+                {% if r.nb_retours %}&middot; {{ r.nb_retours }}e retour{% endif %}
+              </div>
+              {% if r.observations %}
+              <div style="margin-top:8px;padding:10px 14px;background:var(--rouge-fond);
+                          border-left:3px solid var(--rouge);border-radius:3px;
+                          font-size:13.5px;white-space:pre-wrap;">{{ r.observations }}</div>
+              {% endif %}
+              <div class="meta" style="margin-top:6px;">
+                Retourné par {{ r.vise_par }}{% if r.jours %} &mdash; il y a {{ r.jours }} jour(s){% endif %}
+              </div>
+            </div>
+            <form method="POST"
+                  action="{{ url_for('visa.resoumettre', reference=r.reference) }}">
+              <button type="submit" class="mineur"
+                      title="Le document corrigé repart au visa de la Direction.">
+                Resoumettre au visa
+              </button>
+            </form>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="vide">Aucun courrier retourné.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="bloc" id="section-suites">
+      <h2>Suites à donner
+        {% if suites %}<span class="compte">{{ suites|length }}</span>{% endif %}
+      </h2>
+      <div class="corps">
+        {% if suites %}
+          {% for s in suites if s.statut != 'retourne' %}
+          <div class="dossier" style="align-items:flex-start;">
+            <div style="flex:1;">
+              <div class="objet">{{ s.objet }}</div>
+              <div class="meta">
+                {{ s.service_lib }} &middot; {{ s.type_lib }}
+                {% if s.correspondant %}&middot; {{ s.correspondant }}{% endif %}
+                {% if s.statut == 'retourne' %}
+                  &middot; <strong class="marque-etat retour">Retourné au service</strong>
+                {% else %}
+                  &middot; <strong class="marque-etat vise">Visé</strong>
+                {% endif %}
+              </div>
+              {% if s.observations %}
+              <div style="margin-top:8px;padding:10px 14px;background:var(--navy-fond);
+                          border-left:3px solid var(--navy);border-radius:3px;
+                          font-size:13.5px;white-space:pre-wrap;">{{ s.observations }}</div>
+              {% endif %}
+              <div class="meta" style="margin-top:6px;">
+                {% if s.statut == 'retourne' %}Retourné par{% else %}Visé par{% endif %} {{ s.vise_par }}{% if s.jours %} — il y a {{ s.jours }} jour(s){% endif %}
+              </div>
+            </div>
+            <form method="POST"
+                  action="{{ url_for('visa.cloturer', reference=s.reference) }}">
+              <button type="submit" class="mineur">Marquer traité</button>
+            </form>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="vide">Aucune suite en attente. Les observations de la
+          Direction Générale apparaissent ici après visa.</p>
+        {% endif %}
+      </div>
+    </section>
+
     <section class="bloc" id="section-archiver">
       <h2>3 &nbsp;·&nbsp; Signés, à archiver
         {% if a_classer %}<span class="compte">{{ a_classer|length }}</span>{% endif %}
@@ -208,7 +286,6 @@
       </div>
     </section>
 
-    <!-- 4. ARCHIVER -->
     <section class="bloc">
       <h2>4 &nbsp;·&nbsp; Archiver un document</h2>
       <div class="corps">
@@ -269,10 +346,10 @@
 
           <div class="rang">
             <div class="champ">
-              <label for="champ_sens">Sens du courrier</label>
+              <label for="champ_sens">Origine du document</label>
               <select id="champ_sens" name="sens" onchange="majLibelle('a')">
-                <option value="entrant">Entrant</option>
-                <option value="sortant">Sortant</option>
+                <option value="entrant">Reçu &mdash; visa du DG</option>
+                <option value="sortant">Émis &mdash; signature du DG</option>
               </select>
             </div>
             <div class="champ">
@@ -293,7 +370,6 @@
       </div>
     </section>
 
-    <!-- 5. REGISTRE -->
     <section class="bloc">
       <h2>Derniers documents archivés</h2>
       <table>
@@ -340,6 +416,27 @@ function majLibelle(prefixe) {
     if (inp) {
         inp.placeholder = entrant ? 'Ex : Comores Télécom'
                                   : "Ex : Banque Centrale des Comores";
+    }
+    if (prefixe === 's') { majCircuit(entrant); }
+}
+
+// Entrant -> visa interne du DG, gratuit. Sortant -> Zoho Sign.
+// L'ecran doit annoncer quel circuit va etre emprunte.
+function majCircuit(entrant) {
+    var t = document.getElementById('titre_soumission');
+    var f = document.getElementById('s_lbl_pdf');
+    var b = document.getElementById('s_bouton');
+    var n = document.getElementById('s_note');
+    if (entrant) {
+        if (t) { t.innerHTML = "1 &nbsp;·&nbsp; Soumettre un courrier au visa"; }
+        if (f) { f.textContent = 'Courrier reçu (PDF)'; }
+        if (b) { b.textContent = 'Transmettre au DG pour visa'; }
+        if (n) { n.textContent = "Le DG consultera le document dans l'application et consignera ses observations."; }
+    } else {
+        if (t) { t.innerHTML = "1 &nbsp;·&nbsp; Soumettre un courrier à la signature"; }
+        if (f) { f.textContent = 'Projet de courrier (PDF)'; }
+        if (b) { b.textContent = 'Envoyer à la signature'; }
+        if (n) { n.textContent = "Signature électronique Zoho Sign. Numéro attribué à l'archivage."; }
     }
 }
 
@@ -402,6 +499,46 @@ document.addEventListener('DOMContentLoaded', function () {
     var auj = new Date().toISOString().slice(0, 10);
     var sd = document.getElementById('s_date');
     if (sd && !sd.value) { sd.value = auj; }
+});
+</script>
+
+<script>
+// Chaque type de document a une origine naturelle : une note de service est
+// toujours emise, un courrier entrant toujours recu. On preselectionne, sans
+// verrouiller — un contrat ou une facture peuvent aller dans les deux sens.
+var ORIGINE_TYPE = {
+        "CENT": "entrant",
+        "FAC": "entrant",
+        "ETA": "entrant",
+        "CSOR": "sortant",
+        "NOT": "sortant",
+        "ATT": "sortant",
+        "ODM": "sortant",
+        "BOR": "sortant",
+        "DEM": "sortant",
+        "CNT": "",
+        "ACC": "",
+        "PV": "",
+        "VIR": "",
+        "DOC": ""
+};
+
+function majOrigineDepuisType(prefixe) {
+    var type = document.getElementById(prefixe === 's' ? 's_type' : 'champ_type');
+    var sens = document.getElementById(prefixe === 's' ? 's_sens' : 'champ_sens');
+    if (!type || !sens) { return; }
+    var attendu = ORIGINE_TYPE[type.value];
+    if (attendu) {
+        sens.value = attendu;
+        majLibelle(prefixe);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var st = document.getElementById('s_type');
+    if (st) { st.addEventListener('change', function () { majOrigineDepuisType('s'); }); }
+    var at = document.getElementById('champ_type');
+    if (at) { at.addEventListener('change', function () { majOrigineDepuisType('a'); }); }
 });
 </script>
 </body>

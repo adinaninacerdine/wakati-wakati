@@ -331,3 +331,28 @@ td a { color: var(--action); font-weight: 600; }
   .dossier { flex-direction: column; align-items: flex-start; }
   .cartes { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   ÉTATS — sémantique des couleurs
+   ------------------------------------------------------------
+   rouge  : demande une action corrective (retard, retour)
+   vert   : abouti (visé, archivé, traité)
+   navy   : en cours, neutre
+   Le rouge partout supprimerait toute hiérarchie de lecture.
+   ============================================================ */
+:root      { --vert-fond: #E8F5EE; --vert-bord: #A8DCC2; }
+[data-theme="sombre"] { --vert-fond: #16281F; --vert-bord: #2E5541; }
+
+.etat.abouti {
+  border-color: var(--vert-bord);
+  color: var(--vert);
+  background: var(--vert-fond);
+}
+.etat.encours {
+  border-color: var(--navy-bord);
+  color: var(--accent-txt);
+  background: var(--navy-fond);
+}
+.marque-etat { font-weight: 700; }
+.marque-etat.retour  { color: var(--rouge); }
+.marque-etat.vise    { color: var(--vert); }

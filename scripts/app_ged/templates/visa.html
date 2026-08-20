@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visa des courriers — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+<style>
+  /* Lecteur PDF : la consultation doit primer sur la saisie. */
+  .lecteur { width: 100%; height: 640px; border: 1px solid var(--bord);
+             border-radius: 4px; background: var(--surface-2); }
+  .visa-tete { display: flex; justify-content: space-between;
+               align-items: flex-start; gap: 20px; flex-wrap: wrap;
+               margin-bottom: 16px; }
+  .visa-tete .titre { font-size: 16px; font-weight: 700; color: var(--accent-txt); }
+  .visa-tete .meta { font-size: 13px; color: var(--texte-doux); margin-top: 3px; }
+  textarea { width: 100%; padding: 10px; border: 1px solid var(--navy-bord);
+             border-radius: 4px; font-family: inherit; font-size: 14px;
+             background: var(--surface); color: var(--texte);
+             min-height: 110px; resize: vertical; }
+  textarea:focus { outline: 2px solid var(--navy); outline-offset: -1px; }
+  .actions { display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+  .actions button { flex: 1; min-width: 200px; }
+  .aide { font-size: 12.5px; color: var(--texte-doux); margin-top: 10px; }
+</style>
+</head>
+<body>
+
+{% set page = 'visa' %}
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Visa des courriers</h1>
+    <div class="contexte">
+      {% if a_viser %}{{ a_viser|length }} document(s) en attente
+      {% else %}Aucun document en attente{% endif %}
+    </div>
+  </header>
+
+  <div class="contenu">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if not a_viser %}
+      <section class="bloc">
+        <div class="corps">
+          <p class="vide">Aucun courrier ne vous est soumis actuellement.
+          Les documents déposés par le service documentaire apparaîtront ici.</p>
+        </div>
+      </section>
+    {% endif %}
+
+    {% for d in a_viser %}
+    <section class="bloc">
+      <h2>
+        <span>{{ d.objet }}</span>
+        <span class="etat {% if d.jours >= 3 %}tarde{% endif %}">
+          {% if d.jours == 0 %}Aujourd'hui
+          {% elif d.jours == 1 %}1 jour
+          {% else %}{{ d.jours }} jours{% endif %}
+        </span>
+      </h2>
+      <div class="corps">
+
+        <div class="visa-tete">
+          <div>
+            <div class="meta">
+              {{ d.service_lib }} &middot; {{ d.type_lib }}
+              {% if d.correspondant %}&middot; {{ d.sens|capitalize }} — {{ d.correspondant }}{% endif %}
+              &middot; Daté du {{ d.date_doc }}
+            </div>
+            <div class="meta">Déposé le {{ d.depose_affiche }}</div>
+          </div>
+          <a class="lien-action"
+             href="{{ url_for('visa.document', reference=d.reference) }}"
+             target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>
+        </div>
+
+        <iframe class="lecteur" title="Courrier {{ d.objet }}"
+                src="{{ url_for('visa.document', reference=d.reference) }}"></iframe>
+
+        <form method="POST" action="{{ url_for('visa.enregistrer', reference=d.reference) }}"
+              style="margin-top:18px;">
+
+          <label for="obs-{{ d.reference }}">Observations et suites à donner</label>
+          <textarea id="obs-{{ d.reference }}" name="observations"
+                    placeholder="Ex : désigner un participant pour la formation et répondre à la BCC avant le 30."></textarea>
+          <div class="aide">
+            Toute observation saisie ici est transmise au service documentaire
+            et suivie jusqu'à son traitement.
+          </div>
+
+          <div class="actions">
+            <button type="submit" name="decision" value="viser">{% if d.sens == 'sortant' %}Bon pour signature{% else %}Viser le courrier{% endif %}</button>
+            <button type="submit" name="decision" value="retourner" class="mineur">
+              Retourner au service
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </section>
+    {% endfor %}
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
