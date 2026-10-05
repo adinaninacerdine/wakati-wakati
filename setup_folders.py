@@ -21,7 +21,7 @@ TYPES = {
     "FAC": "Facture", "CNT": "Contrat", "NOT": "Note de service", "VIR": "Virement",
     "DEM": "Demande", "ODM": "Ordre de mission", "ETA": "État / Relevé", "ACC": "Accord",
     "ATT": "Attestation", "BOR": "Bordereau", "CENT": "Courrier Entrant", "CSOR": "Courrier Sortant", 
-    "PV": "Procès-verbal", "DOC": "Document divers"
+    "PV": "Procès-verbal", "DOC": "Document divers", "MAN": "Mandat"
 }
 
 def main():
