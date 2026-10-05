@@ -16,7 +16,8 @@
                 "CENT": "7rxex22eb736e104749f58b00f8512aa7f508",
                 "CSOR": "7rxexf06998b1ae2d45d496eb5e6396947c4c",
                 "PV": "7rxex700fc61c5c9549f2b0a42d169bfc26e0",
-                "DOC": "7rxex37f48d04b29d41b29cc04ba12d98d412"
+                "DOC": "7rxex37f48d04b29d41b29cc04ba12d98d412",
+                "MAN": "3367b82430001988b46d6ae50ae2da5d0a9c1"
             }
         },
         "RH": {
@@ -35,7 +36,8 @@
                 "CENT": "7rxex68efead90942457b890c01325553e2dc",
                 "CSOR": "7rxex6660facc59fb46469899aa68f7cf6bc3",
                 "PV": "7rxexe4ce021f115d4102bae682139e871b65",
-                "DOC": "7rxexce4c7ff4941a4f56a58b00d7c41ebc1e"
+                "DOC": "7rxexce4c7ff4941a4f56a58b00d7c41ebc1e",
+                "MAN": "3367b82430001988b46d6ae50ae2da5d0a9c1"
             }
         },
         "DGA": {
@@ -54,7 +56,8 @@
                 "CENT": "7rxexd4e7a333638640d7a4080e02384491de",
                 "CSOR": "7rxexd93e827386774c6da43e7e16b1686353",
                 "PV": "7rxex6623ffedd0b042d7b26ed2463968a83d",
-                "DOC": "7rxexc731ff9012d349258bfd084386509b32"
+                "DOC": "7rxexc731ff9012d349258bfd084386509b32",
+                "MAN": "3367b82430001988b46d6ae50ae2da5d0a9c1"
             }
         },
         "JUR": {
@@ -73,7 +76,8 @@
                 "CENT": "7rxexaf9b4676d7d148b88f2b6e567771db62",
                 "CSOR": "7rxex0375ea3c71ae4feaa504de77805bbea3",
                 "PV": "7rxexb395887c57d84178a7beb9f2f0cab419",
-                "DOC": "7rxex2eb7925db77a46aeb1d9b80d65247ef5"
+                "DOC": "7rxex2eb7925db77a46aeb1d9b80d65247ef5",
+                "MAN": "3367b82430001988b46d6ae50ae2da5d0a9c1"
             }
         },
         "COM": {
@@ -92,7 +96,8 @@
                 "CENT": "7rxex2e06080b1d794c428f1eee272378f7f8",
                 "CSOR": "7rxex1b7151fac8334b32b3e4238f67a552e6",
                 "PV": "7rxex096f5ae6dc4540518036c9aeadd4ab3b",
-                "DOC": "7rxex655e72cfb7834611a5a1c7ce68df6a6a"
+                "DOC": "7rxex655e72cfb7834611a5a1c7ce68df6a6a",
+                "MAN": "3367b82430001988b46d6ae50ae2da5d0a9c1"
             }
         },
         "EXP": {
@@ -111,7 +116,8 @@
                 "CENT": "7rxex7788ff2578b04de1a63fc45da815c070",
                 "CSOR": "7rxex9255c5786ddf4ff8955bc5299b928dad",
                 "PV": "7rxex6bf5fa92d8174e709ad8f16176c679fb",
-                "DOC": "7rxex4b601ba2d89e47cdb2327af3118615af"
+                "DOC": "7rxex4b601ba2d89e47cdb2327af3118615af",
+                "MAN": "3367b82430001988b46d6ae50ae2da5d0a9c1"
             }
         }
     }
