@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Courrier de réponse — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Courrier de réponse</h1>
+    <div class="contexte">
+      {{ cpt.a_repondre }} courrier(s) en attente de réponse
+      {% if cpt.en_retard %}&middot; <strong style="color:var(--rouge);">{{ cpt.en_retard }} en retard</strong>{% endif %}
+    </div>
+  </header>
+
+  <div class="contenu">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="actions" style="margin:0 0 20px;">
+      <a class="bouton" href="{{ url_for('courrier.preparer') }}">Nouveau courrier sortant</a>
+      <span class="aide">Pour un courrier spontané, sans courrier reçu à l'origine.</span>
+    </div>
+
+    <!-- 1. COURRIERS REÇUS À TRAITER -->
+    <section class="bloc">
+      <h2><span>1 &nbsp;·&nbsp; Courriers reçus en attente de réponse
+        {% if entrants %}<span class="compte">{{ entrants|length }}</span>{% endif %}</span></h2>
+      <div class="corps">
+        {% if entrants %}
+          {% for e in entrants %}
+          <div class="dossier" style="align-items:flex-start;">
+            <div style="flex:1;">
+              <div class="objet">{{ e.objet or '(sans objet)' }}</div>
+              <div class="meta">
+                {{ e.organisation }}{% if e.categorie_nom %} &middot; {{ e.categorie_nom }}{% endif %}
+                &middot; reçu le {{ e.recu_affiche }}
+                {% if e.urgence == 'urgente' %}&middot; <strong style="color:var(--rouge);">Urgent</strong>{% endif %}
+              </div>
+              <div class="meta">
+                {{ e.statut_lib }}
+                {% if e.echeance_affiche %}&middot; échéance {{ e.echeance_affiche }}{% endif %}
+              </div>
+            </div>
+            <span class="etat {% if e.retard %}tarde{% else %}encours{% endif %}">
+              {% if e.retard %}En retard
+              {% elif e.reste_h is not none and e.reste_h < 24 %}Moins de 24 h
+              {% elif e.reste_h is not none %}{{ (e.reste_h / 24)|round(0, 'floor')|int }} j restant(s)
+              {% else %}—{% endif %}
+            </span>
+            <div style="display:flex;flex-direction:column;gap:6px;min-width:190px;">
+              {% if e.reponse_ref %}
+                <a class="bouton-mineur" href="{{ url_for('courrier.edition', ref=e.reponse_ref) }}">Ouvrir le projet</a>
+              {% else %}
+                <a class="bouton" href="{{ url_for('courrier.preparer', entrant=e.id) }}">Préparer la réponse</a>
+              {% endif %}
+              <form method="POST" action="{{ url_for('courrier.statut_entrant', eid=e.id) }}"
+                    style="display:flex;gap:6px;">
+                {% if e.urgence != 'urgente' %}
+                <button class="discret" name="action" value="urgente" title="Échéance ramenée au délai urgent">Urgent</button>
+                {% else %}
+                <button class="discret" name="action" value="normale">Délai normal</button>
+                {% endif %}
+                {% if not e.reponse_ref %}
+                <button class="discret" name="action" value="sans_objet"
+                        title="Ce courrier n'appelle pas de réponse">Pas de réponse</button>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="vide">Aucun courrier en attente de réponse. Les courriers reçus
+          apparaissent ici dès leur dépôt dans la GED.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- 2. PROJETS -->
+    <section class="bloc">
+      <h2><span>2 &nbsp;·&nbsp; Projets de réponse
+        {% if en_cours %}<span class="compte">{{ en_cours|length }}</span>{% endif %}</span></h2>
+      <div class="corps">
+        {% if en_cours %}
+        <table>
+          <thead><tr><th>Objet</th><th>Destinataire</th><th>Nature</th><th>Statut</th><th>Mis à jour</th><th></th></tr></thead>
+          <tbody>
+          {% for r in en_cours %}
+            <tr>
+              <td>{{ r.objet or '(sans objet)' }}
+                {% if r.nb_a_completer and r.statut in ['brouillon', 'retourne'] %}
+                  <div class="aide"><span class="compteur-pc">{{ r.nb_a_completer }}</span> zone(s) à compléter</div>
+                {% endif %}
+              </td>
+              <td>{{ r.organisation }}</td>
+              <td>{{ r.nature_lib }}</td>
+              <td><span class="badge {% if r.statut == 'retourne' %}alerte{% elif r.statut in ['signe', 'en_signature'] %}ok{% endif %}">{{ r.statut_lib }}</span></td>
+              <td>{{ r.maj_affiche }}</td>
+              <td><a href="{{ url_for('courrier.edition', ref=r.ref) }}">Ouvrir</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <p class="aide" style="margin-top:12px;">
+          Brouillon → À valider → En signature → Signé → Archivé. Un projet
+          « En signature » est à imprimer et faire signer, puis le scan se
+          dépose depuis l'écran Courriers.
+        </p>
+        {% else %}
+          <p class="vide">Aucun projet en cours.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {% if recents %}
+    <section class="bloc">
+      <h2>Derniers projets clos</h2>
+      <table>
+        <thead><tr><th>Objet</th><th>Destinataire</th><th>Statut</th><th>Archivé sous</th><th></th></tr></thead>
+        <tbody>
+        {% for r in recents %}
+          <tr>
+            <td>{{ r.objet }}</td><td>{{ r.organisation }}</td>
+            <td><span class="badge {% if r.statut == 'archive' %}ok{% endif %}">{{ r.statut_lib }}</span></td>
+            <td>{% if r.lien_archive %}<a href="{{ r.lien_archive }}" target="_blank" rel="noopener">{{ r.nom_archive }}</a>{% else %}{{ r.nom_archive or '—' }}{% endif %}</td>
+            <td><a href="{{ url_for('courrier.edition', ref=r.ref) }}">Voir</a></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endif %}
+
+    {% if clos %}
+    <section class="bloc">
+      <h2>Reçus sans réponse attendue</h2>
+      <div class="corps">
+        {% for e in clos %}
+        <div class="dossier">
+          <div>
+            <div class="objet">{{ e.objet }}</div>
+            <div class="meta">{{ e.organisation }} &middot; reçu le {{ e.recu_affiche }}</div>
+          </div>
+          <form method="POST" action="{{ url_for('courrier.statut_entrant', eid=e.id) }}">
+            <button class="discret" name="action" value="rouvrir">Rouvrir</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+</body>
+</html>

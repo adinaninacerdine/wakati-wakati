@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ rep.objet or 'Projet de courrier' }} — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Projet de courrier</h1>
+    <div class="contexte">
+      <span class="badge {% if rep.statut == 'retourne' %}alerte{% elif rep.statut in ['signe', 'en_signature', 'archive'] %}ok{% endif %}">{{ rep.statut_lib }}</span>
+      &nbsp;<a class="lien-action" href="{{ url_for('courrier.liste') }}">Retour à la liste</a>
+    </div>
+  </header>
+
+  <div class="contenu" style="max-width:1280px;">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if rep.statut == 'retourne' %}
+    <div class="encart alerte"><strong>Retourné par la Direction.</strong>
+      {% if rep.motif_retour %}<br>{{ rep.motif_retour }}{% endif %}
+      <br>Corrigez le projet puis resoumettez-le.</div>
+    {% elif rep.statut == 'a_valider' %}
+    <div class="encart">En attente de validation par le signataire, dans l'écran Visa Direction.</div>
+    {% elif rep.statut == 'en_signature' %}
+    <div class="encart ok">Validé. Imprimez le courrier, faites-le signer, puis déposez le scan
+      signé dans l'écran <a href="{{ url_for('index') }}#section-signature">Courriers</a>.</div>
+    {% elif rep.statut == 'signe' %}
+    <div class="encart ok">Signé. Il attend son archivage dans l'écran
+      <a href="{{ url_for('index') }}#section-archiver">Courriers</a> — le numéro {{ rep.numero }} y est pré-rempli.</div>
+    {% elif rep.statut == 'archive' %}
+    <div class="encart ok">Archivé sous {% if rep.lien_archive %}<a href="{{ rep.lien_archive }}" target="_blank" rel="noopener">{{ rep.nom_archive }}</a>{% else %}{{ rep.nom_archive }}{% endif %}.</div>
+    {% endif %}
+
+    <div class="grille-edition">
+
+      <!-- COLONNE GAUCHE : le courrier -->
+      <div>
+        <form method="POST" action="{{ url_for('courrier.enregistrer', ref=rep.ref) }}" id="form_edition">
+          <section class="bloc">
+            <h2><span>{{ rep.nature_lib }} &middot; {{ rep.organisation }}</span>
+              {% if rep.nb_a_completer %}<span class="badge alerte" id="badge_pc">{{ rep.nb_a_completer }} à compléter</span>{% endif %}
+            </h2>
+            <div class="corps">
+              <fieldset {% if not modifiable %}disabled{% endif %} style="border:0;padding:0;margin:0;">
+
+              <div class="champ">
+                <label for="e_objet">Objet</label>
+                <input type="text" id="e_objet" name="objet" value="{{ rep.objet }}" required>
+              </div>
+
+              <div class="rang">
+                <div class="champ" style="flex:2;">
+                  <label for="e_corr">Destinataire</label>
+                  <select id="e_corr" name="correspondant_id">
+                    <option value="">— hors annuaire : {{ rep.correspondant_libre }} —</option>
+                    {% for f in annuaire %}
+                    <option value="{{ f.id }}" {% if rep.correspondant_id == f.id %}selected{% endif %}>{{ f.organisation or f.nom }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="champ">
+                  <label for="e_sig">Signataire</label>
+                  <select id="e_sig" name="signataire">
+                    {% for s in signataires %}
+                    <option value="{{ s.code }}" {% if rep.signataire == s.code %}selected{% endif %}>{{ s.fonction }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+
+              <div class="rang">
+                <div class="champ">
+                  <label for="e_ref">V/Réf.</label>
+                  <input type="text" id="e_ref" name="ref_entrant" value="{{ rep.ref_entrant }}">
+                </div>
+                <div class="champ">
+                  <label for="e_date_e">Du</label>
+                  <input type="date" id="e_date_e" name="date_entrant" value="{{ rep.date_entrant }}">
+                </div>
+                <div class="champ">
+                  <label for="e_service">Service émetteur</label>
+                  <select id="e_service" name="service">
+                    {% for code, nom in services.items() %}
+                    <option value="{{ code }}" {% if rep.service == code %}selected{% endif %}>{{ nom }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+
+              <div class="champ">
+                <label for="e_corps">Texte du courrier</label>
+                <textarea id="e_corps" name="corps" class="corps-lettre" oninput="compterPC()">{{ rep.corps }}</textarea>
+                <div class="aide">En-tête WAKATI, références, destinataire, objet et
+                  signature sont ajoutés automatiquement. Les zones
+                  <code>[à compléter : …]</code> doivent disparaître avant la soumission.</div>
+              </div>
+
+              <div class="champ">
+                <label for="e_copies">Copies (séparées par ;)</label>
+                <input type="text" id="e_copies" name="copies" value="{{ rep.copies }}">
+              </div>
+
+              <div class="champ">
+                <label for="e_consignes">Consignes pour la réponse</label>
+                <textarea id="e_consignes" name="consignes" style="min-height:70px;">{{ rep.consignes }}</textarea>
+              </div>
+              </fieldset>
+
+              {% if modifiable %}
+              <div class="actions">
+                <button type="submit" name="action" value="enregistrer" class="mineur">Enregistrer</button>
+                <button type="submit" name="action" value="soumettre">
+                  {% if rep.statut == 'retourne' %}Resoumettre à validation{% else %}Soumettre à validation{% endif %}
+                </button>
+                <a class="lien-action" href="{{ url_for('courrier.apercu', ref=rep.ref) }}" target="apercu"
+                   onclick="enregistrerPuisApercu(event)">Actualiser l'aperçu</a>
+              </div>
+              {% endif %}
+            </div>
+          </section>
+        </form>
+
+        {% if modifiable %}
+        <section class="bloc">
+          <h2>Assistance IA</h2>
+          <div class="corps">
+            {% if ia_ok %}
+              <p class="aide" style="margin-top:0;">L'IA lit le courrier reçu et vos consignes, puis
+                propose le paragraphe central. Elle n'invente ni montant, ni date, ni engagement :
+                une information absente devient <code>[à compléter]</code>. Vous relisez tout avant
+                la soumission. Modèle : {{ ia_modele }}.</p>
+              <button type="button" id="bouton_ia" onclick="demanderIA()">Proposer le paragraphe central</button>
+              <div id="ia_etat" class="aide"></div>
+              <div id="ia_alertes"></div>
+            {% else %}
+              <p class="vide">{{ ia_raison }}</p>
+            {% endif %}
+          </div>
+        </section>
+
+        <section class="bloc">
+          <h2>Autres actions</h2>
+          <div class="corps">
+            <form method="POST" action="{{ url_for('courrier.regenerer', ref=rep.ref) }}"
+                  onsubmit="return confirm('Recharger le texte depuis le modèle ? Vos modifications du corps seront perdues.');"
+                  class="rang" style="align-items:flex-end;">
+              <div class="champ" style="flex:2;margin:0;">
+                <label for="r_modele">Recharger le texte depuis un modèle</label>
+                <select id="r_modele" name="modele_id">
+                  {% for m in modeles %}
+                  <option value="{{ m.id }}" {% if rep.modele_id == m.id %}selected{% endif %}>{{ m.nom }}{% if m.statut != 'valide' %} (non validé){% endif %}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div style="flex:0;min-width:auto;"><button type="submit" class="mineur">Recharger</button></div>
+            </form>
+            <form method="POST" action="{{ url_for('courrier.abandonner', ref=rep.ref) }}" style="margin-top:14px;"
+                  onsubmit="return confirm('Abandonner ce projet ? Le courrier reçu redeviendra « à préparer ».');">
+              <button type="submit" class="discret">Abandonner ce projet</button>
+            </form>
+          </div>
+        </section>
+        {% endif %}
+      </div>
+
+      <!-- COLONNE DROITE : aperçu et contexte -->
+      <div>
+        <section class="bloc">
+          <h2><span>Aperçu</span>
+            <a class="lien-action" href="{{ url_for('courrier.apercu', ref=rep.ref) }}" target="_blank" rel="noopener">Ouvrir le PDF</a></h2>
+          <iframe name="apercu" class="lecteur-apercu" title="Aperçu du courrier"
+                  src="{{ url_for('courrier.apercu', ref=rep.ref) }}"></iframe>
+        </section>
+
+        {% if entrant %}
+        <section class="bloc">
+          <h2><span>Courrier reçu</span>
+            {% if entrant.echeance_affiche %}<span class="etat {% if entrant.retard %}tarde{% else %}encours{% endif %}">échéance {{ entrant.echeance_affiche }}</span>{% endif %}
+          </h2>
+          <div class="corps">
+            <div style="font-weight:600;color:var(--accent-txt);">{{ entrant.objet }}</div>
+            <div class="aide">{{ entrant.organisation }} &middot; reçu le {{ entrant.recu_affiche }}</div>
+            {% if texte %}
+            <details style="margin-top:10px;">
+              <summary>Texte extrait</summary>
+              <pre class="texte-recu">{{ texte }}</pre>
+            </details>
+            {% endif %}
+          </div>
+        </section>
+        {% endif %}
+
+        <section class="bloc">
+          <h2>Historique</h2>
+          <div class="corps">
+            <ul class="historique">
+              {% for h in rep.historique|reverse %}
+              <li><strong>{{ h.action }}</strong> — {{ h.le|date_courte }} — {{ h.par }}{% if h.detail %}<br>{{ h.detail }}{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% if rep.ref_sortant %}<p class="aide">Référence : {{ rep.ref_sortant }}</p>{% endif %}
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+
+<script>
+var PC_VIDE = {{ pc_vide|tojson }};
+var URL_IA = "{{ url_for('courrier.ia', ref=rep.ref) }}";
+var URL_ENREG = "{{ url_for('courrier.enregistrer', ref=rep.ref) }}";
+var URL_APERCU = "{{ url_for('courrier.apercu', ref=rep.ref) }}";
+
+function compterPC() {
+  var t = document.getElementById('e_corps').value + ' ' + document.getElementById('e_objet').value;
+  var n = (t.match(/\[à compléter[^\]]*\]/gi) || []).length;
+  var b = document.getElementById('badge_pc');
+  if (b) { b.textContent = n + ' à compléter'; b.style.display = n ? '' : 'none'; }
+}
+
+// L'aperçu reflète le texte affiché : on enregistre d'abord, sans recharger la page.
+function enregistrerPuisApercu(ev) {
+  ev.preventDefault();
+  var donnees = new FormData(document.getElementById('form_edition'));
+  donnees.set('action', 'enregistrer');
+  fetch(URL_ENREG, {method: 'POST', body: donnees, credentials: 'same-origin'})
+    .then(function () {
+      document.querySelector('iframe[name=apercu]').src = URL_APERCU + '?t=' + Date.now();
+    });
+}
+
+function echapper(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c];
+  });
+}
+
+function demanderIA() {
+  var bouton = document.getElementById('bouton_ia');
+  var etat = document.getElementById('ia_etat');
+  var zoneAlertes = document.getElementById('ia_alertes');
+  bouton.disabled = true;
+  etat.textContent = 'Rédaction en cours… (jusqu’à une minute)';
+  zoneAlertes.innerHTML = '';
+  var donnees = new FormData();
+  donnees.set('consignes', document.getElementById('e_consignes').value);
+  fetch(URL_IA, {method: 'POST', body: donnees, credentials: 'same-origin'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      bouton.disabled = false;
+      if (!d.ok) { etat.textContent = d.erreur; return; }
+      var zone = document.getElementById('e_corps');
+      var texte = d.texte;
+      if (zone.value.indexOf(PC_VIDE) >= 0) {
+        zone.value = zone.value.replace(PC_VIDE, texte);
+        etat.textContent = 'Paragraphe inséré à la place de la zone à compléter. Relisez-le.';
+      } else {
+        var pos = zone.selectionStart || zone.value.length;
+        zone.value = zone.value.slice(0, pos) + '\n\n' + texte + '\n\n' + zone.value.slice(pos);
+        etat.textContent = 'Paragraphe inséré à la position du curseur. Relisez-le.';
+      }
+      compterPC();
+      if (d.alertes && d.alertes.length) {
+        zoneAlertes.innerHTML = '<div class="encart alerte" style="margin-top:10px;"><strong>Points à vérifier :</strong><ul>'
+          + d.alertes.map(function (a) { return '<li>' + echapper(a) + '</li>'; }).join('') + '</ul></div>';
+      }
+    })
+    .catch(function () { bouton.disabled = false; etat.textContent = 'Échec de l’appel. Réessayez.'; });
+}
+
+document.addEventListener('DOMContentLoaded', compterPC);
+</script>
+</body>
+</html>

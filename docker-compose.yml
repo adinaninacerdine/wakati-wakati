@@ -31,6 +31,9 @@ services:
       TZ: Indian/Comoro
       GED_CONTENEUR: "1"
       GED_AUTH: "1"
+      # Module Courrier : banque de modèles, projets et échéances dans le
+      # volume persistant (survivent à une reconstruction d'image).
+      GED_DONNEES: /app/donnees
 
     networks:
       - toile

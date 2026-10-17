@@ -53,7 +53,8 @@ z = ZohoConnector()
 # COUCHE NOTIFICATION
 # ==========================================
 try:
-    from notifier import dispatch, statuts_pour_registre, send_for_signature
+    from notifier import (dispatch, statuts_pour_registre, send_for_signature,
+                          notify_cliq)
     NOTIFIER_DISPONIBLE = True
 except Exception as _notif_err:  # noqa: BLE001
     print(f"[GED] notifier.py indisponible ({_notif_err}) — notifications désactivées.")
@@ -88,12 +89,27 @@ except Exception as _visa_err:  # noqa: BLE001
 
 
 # ==========================================
+# MODULE COURRIER DE RÉPONSE
+# ==========================================
+# Banque de modeles, projets de reponse, echeances et assistance IA.
+# Le projet valide rejoint le circuit de visa ci-dessus.
+try:
+    import courrier
+    COURRIER_DISPONIBLE = True
+except Exception as _courrier_err:  # noqa: BLE001
+    print(f"[GED] courrier.py indisponible ({_courrier_err}) — module Courrier desactive.")
+    COURRIER_DISPONIBLE = False
+
+
+# ==========================================
 # FLASK & ARBORESCENCE
 # ==========================================
 template_dir = os.path.join(CURRENT_DIR, 'templates')
 app = Flask(__name__, template_folder=template_dir)
 if VISA_DISPONIBLE:
     app.register_blueprint(bp_visa)
+if COURRIER_DISPONIBLE:
+    app.register_blueprint(courrier.bp_courrier)
 
 
 # ==========================================
@@ -168,6 +184,12 @@ COLONNES_REGISTRE = [
 SENS = {"entrant": "Entrant", "sortant": "Sortant"}
 LIBELLE_CORRESPONDANT = {"entrant": "Expéditeur", "sortant": "Destinataire"}
 COLONNES_NOTIF = ['Statut Cliq', 'Statut Sign', 'Sign Request ID']
+
+# Module Courrier : trois colonnes de suivi des reponses. Passe a True
+# apres avoir ajoute ces trois en-tetes, a l'identique, dans la feuille DATA
+# du registre Zoho Sheet (et en fin de ligne 1 de registre_2026.csv).
+COLONNES_REPONSE = ['En réponse à', 'Statut de la réponse', 'Échéance']
+COLONNES_REPONSE_ACTIVES = False
 
 
 # ==========================================
@@ -277,16 +299,26 @@ def lister_a_classer():
         suffixe = m.group(5) if m else ""
         memo = memoire.get(suffixe, {})
 
+        # Courrier venu du circuit de visa : sens, correspondant et, pour une
+        # reponse, numero d'ordre reserve et date du courrier.
+        infos = {}
+        if COURRIER_DISPONIBLE:
+            try:
+                infos = courrier.infos_a_classer(chemin.name)
+            except Exception:  # noqa: BLE001
+                infos = {}
+
         resultat.append({
             "fichier": chemin.name,
-            "service": service,
+            "service": infos.get("service") or service,
             "type_doc": type_doc,
-            "date_doc": date_doc,
+            "date_doc": infos.get("date_doc") or date_doc,
             "objet": objet.replace("_", " "),
             "service_lib": SERVICES.get(service, service or "Service inconnu"),
             "type_lib": TYPES.get(type_doc, type_doc or "Type inconnu"),
-            "correspondant": memo.get("correspondant", ""),
-            "sens": memo.get("sens", "sortant"),
+            "correspondant": memo.get("correspondant") or infos.get("correspondant", ""),
+            "sens": memo.get("sens") or infos.get("sens") or "sortant",
+            "numero": infos.get("numero", ""),
         })
     return resultat
 
@@ -382,6 +414,80 @@ def upload_avec_diagnostic(chemin, dossier_id):
         raise
 
 
+def maj_registre_local(nom_fichier, valeurs):
+    """Met a jour, dans registre_2026.csv, les colonnes de suivi d'une ligne
+    deja ecrite (ex. un entrant qui passe en « Répondu »)."""
+    if not FICHIER_REGISTRE.exists():
+        return
+    try:
+        with open(FICHIER_REGISTRE, 'r', encoding='utf-8-sig') as f:
+            lignes = list(csv.reader(f, delimiter=';'))
+        if not lignes:
+            return
+        entetes = lignes[0]
+        modifie = False
+        for ligne in lignes[1:]:
+            if ligne and ligne[0] == nom_fichier:
+                for col, val in valeurs.items():
+                    if col in entetes:
+                        i = entetes.index(col)
+                        ligne.extend([''] * (i + 1 - len(ligne)))
+                        ligne[i] = val
+                        modifie = True
+        if modifie:
+            with open(FICHIER_REGISTRE, 'w', encoding='utf-8-sig', newline='') as f:
+                csv.writer(f, delimiter=';').writerows(lignes)
+    except Exception:  # noqa: BLE001
+        logging.error("Mise à jour du registre local : %s", traceback.format_exc())
+
+
+def maj_registre_sheet(nom_fichier, valeurs):
+    """Meme mise a jour dans Zoho Sheet. Echec sans consequence."""
+    try:
+        critere = '"Nom du fichier"="{}"'.format(nom_fichier.replace('"', ''))
+        z.sheet_update_records(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID,
+                               critere, valeurs)
+    except Exception:  # noqa: BLE001
+        logging.error("Mise à jour Zoho Sheet de %s : %s", nom_fichier,
+                      traceback.format_exc())
+
+
+# Services et types pour visa.py, sans « from app import » (qui chargerait
+# une seconde copie de ce module quand il est lance par python app.py).
+app.config["GED_SERVICES"] = SERVICES
+app.config["GED_TYPES"] = TYPES
+
+if COURRIER_DISPONIBLE:
+    try:
+        courrier.init_courrier(
+            app, connexion_requise if AUTH_ACTIVE else None,
+            services=SERVICES, types=TYPES, dernier_numero=dernier_numero,
+            notifier=(notify_cliq if NOTIFIER_DISPONIBLE else None))
+    except Exception:  # noqa: BLE001
+        logging.error("Initialisation du module Courrier : %s", traceback.format_exc())
+        COURRIER_DISPONIBLE = False
+
+
+@app.context_processor
+def _contexte_barre():
+    """Compteurs de la barre laterale, sur toutes les pages."""
+    ctx = {"courrier_actif": COURRIER_DISPONIBLE, "nb_a_viser": 0,
+           "cpt_courrier": None, "courrier_responsable": False}
+    try:
+        ctx["nb_a_viser"] = len(lister_a_viser(filtrer=True)) if VISA_DISPONIBLE else 0
+    except TypeError:
+        ctx["nb_a_viser"] = len(lister_a_viser())
+    except Exception:  # noqa: BLE001
+        pass
+    if COURRIER_DISPONIBLE:
+        try:
+            ctx["cpt_courrier"] = courrier.compteurs()
+            ctx["courrier_responsable"] = courrier.est_responsable_ged()
+        except Exception:  # noqa: BLE001
+            pass
+    return ctx
+
+
 # ==========================================
 # ROUTE 1 — CLASSEMENT (responsable GED)
 # ==========================================
@@ -398,6 +504,7 @@ def index():
         sens = request.form.get('sens', 'entrant')
         correspondant = (request.form.get('correspondant') or '').strip()
         besoin_signature = request.form.get('signature') in ('on', 'true', '1')
+        reponse_attendue = request.form.get('reponse_attendue', 'normale')
 
         # Deux origines possibles : un courrier deja signe qui attend dans
         # a_classer/, ou un depot manuel classique.
@@ -485,6 +592,18 @@ def index():
                     logging.error("Échec notifications pour %s\n%s",
                                   nouveau_nom, traceback.format_exc())
 
+            # Module Courrier : rattache l'archive a son entrant ou a sa
+            # reponse, et fournit les trois colonnes de suivi du registre.
+            colonnes_rep, maj_entrant = {}, None
+            if COURRIER_DISPONIBLE:
+                colonnes_rep, maj_entrant = courrier.lier_archive(
+                    fichier_local, nouveau_nom, permalink, sens,
+                    meta={"service": service, "type_doc": type_doc,
+                          "date_doc": date_doc, "objet": objet,
+                          "correspondant": correspondant,
+                          "chemin_pdf": str(chemin_temp)},
+                    urgence=reponse_attendue)
+
             row_data_csv = [
                 nouveau_nom, SERVICES[service], TYPES[type_doc], date_doc,
                 ILES.get(ile, ''), objet, 'Courriers', 'Zoho WorkDrive',
@@ -492,6 +611,8 @@ def index():
             ]
             if COLONNES_NOTIF_ACTIVES:
                 row_data_csv += [statut_cliq, statut_sign, sign_id]
+            if COLONNES_REPONSE_ACTIVES:
+                row_data_csv += [colonnes_rep.get(c, '') for c in COLONNES_REPONSE]
 
             with open(FICHIER_REGISTRE, mode='a', encoding='utf-8-sig', newline='') as f:
                 csv.writer(f, delimiter=';').writerow(row_data_csv)
@@ -514,6 +635,9 @@ def index():
                 row_data_dict["Statut Cliq"] = statut_cliq
                 row_data_dict["Statut Sign"] = statut_sign
                 row_data_dict["Sign Request ID"] = sign_id
+            if COLONNES_REPONSE_ACTIVES:
+                for c in COLONNES_REPONSE:
+                    row_data_dict[c] = colonnes_rep.get(c, '')
 
             try:
                 z.sheet_add_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID,
@@ -521,6 +645,11 @@ def index():
             except Exception:
                 logging.error("Échec Zoho Sheet pour %s\n%s",
                               nouveau_nom, traceback.format_exc())
+
+            # La reponse archivee clot l'entrant d'origine dans le registre.
+            if COLONNES_REPONSE_ACTIVES and maj_entrant:
+                maj_registre_local(*maj_entrant)
+                maj_registre_sheet(*maj_entrant)
 
             # Le courrier signe est classe : il sort de la file d'attente.
             if source_signee is not None:
@@ -585,6 +714,7 @@ def soumettre():
         sens = request.form.get('sens', 'sortant')
         correspondant = (request.form.get('correspondant') or '').strip()
         deposant = request.form.get('deposant', '').strip() or "Non précisé"
+        reponse_attendue = request.form.get('reponse_attendue', 'normale')
 
         if not fichier or fichier.filename == '':
             flash("Veuillez sélectionner un fichier PDF.", "error")
@@ -624,6 +754,14 @@ def soumettre():
                         "correspondant": correspondant,
                         "deposant": deposant,
                     })
+                    # Courrier recu : ouverture du suivi de reponse
+                    # (echeance, texte extrait pour l'assistance IA).
+                    if sens == "entrant" and COURRIER_DISPONIBLE:
+                        courrier.enregistrer_entrant(ref, {
+                            "service": service, "type_doc": type_doc,
+                            "date_doc": date_doc, "objet": objet,
+                            "correspondant": correspondant,
+                        }, chemin_temp, source="visa", urgence=reponse_attendue)
                     flash(f"✅ Transmis à la Direction Générale pour visa. "
                           f"Référence : {ref}", "success")
                 except Exception as exc:  # noqa: BLE001
@@ -707,6 +845,10 @@ def boucle_releve():
         ok, err = passe_de_releve()
         if not ok:
             print(f"[GED] Relève en échec : {err}")
+        if COURRIER_DISPONIBLE:
+            nb = courrier.relancer_echeances()
+            if nb:
+                print(f"[GED] Courrier : {nb} relance(s) d'échéance envoyée(s)")
         time.sleep(INTERVALLE_RELEVE_MIN * 60)
 
 
@@ -750,7 +892,9 @@ def indicateurs_visa():
     for d in donnees.values():
         statut = d.get("statut", "")
 
-        if statut == "attente":
+        if statut in ("a_viser", "attente"):
+            # Correctif : le depot ecrit "a_viser" ; seul "attente" etait
+            # compte, le compteur restait a zero.
             res["a_viser"] += 1
             try:
                 jours = (maintenant - datetime.fromisoformat(d.get("depose_le", ""))).days
@@ -882,6 +1026,7 @@ def calculer_indicateurs():
         'par_sens': par_sens,
         'correspondants': classer(correspondants, 5),
         'mois_libelle': aujourdhui.strftime('%m/%Y'),
+        'courrier': courrier.compteurs() if COURRIER_DISPONIBLE else None,
     }
 
 
@@ -902,6 +1047,8 @@ if __name__ == '__main__':
         entetes = list(COLONNES_REGISTRE)
         if COLONNES_NOTIF_ACTIVES:
             entetes += COLONNES_NOTIF
+        if COLONNES_REPONSE_ACTIVES:
+            entetes += COLONNES_REPONSE
         with open(FICHIER_REGISTRE, mode='w', encoding='utf-8-sig', newline='') as f:
             csv.writer(f, delimiter=';').writerow(entetes)
 
@@ -913,6 +1060,7 @@ if __name__ == '__main__':
     print(f"[GED] En attente     : {len(charger_attente())} courrier(s)")
     print("[GED] Classement     : http://127.0.0.1:5000/")
     print("[GED] Soumission     : http://127.0.0.1:5000/soumettre")
+    print(f"[GED] Courrier       : {'http://127.0.0.1:5000/courrier/' if COURRIER_DISPONIBLE else 'INDISPONIBLE'}")
 
     print(f"[GED] Relève auto    : toutes les {INTERVALLE_RELEVE_MIN} min")
 

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Préparer un courrier — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>{% if ctx.entrant %}Préparer la réponse{% else %}Nouveau courrier sortant{% endif %}</h1>
+    <div class="contexte"><a class="lien-action" href="{{ url_for('courrier.liste') }}">Retour à la liste</a></div>
+  </header>
+
+  <div class="contenu">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if ctx.entrant %}
+    <section class="bloc">
+      <h2><span>Courrier reçu</span>
+        {% if ctx.entrant.echeance_affiche %}
+        <span class="etat {% if ctx.entrant.retard %}tarde{% else %}encours{% endif %}">échéance {{ ctx.entrant.echeance_affiche }}</span>
+        {% endif %}
+      </h2>
+      <div class="corps">
+        <div class="objet" style="font-weight:600;color:var(--accent-txt);">{{ ctx.entrant.objet }}</div>
+        <div class="meta aide">Expéditeur saisi : {{ ctx.entrant.correspondant or '—' }} &middot; daté du {{ ctx.entrant.date_doc|date_courte }} &middot; reçu le {{ ctx.entrant.recu_affiche }}</div>
+        {% if ctx.observations %}
+        <div class="encart" style="margin-top:12px;"><strong>Observations de la Direction :</strong><br>{{ ctx.observations }}</div>
+        {% endif %}
+        {% if ctx.texte %}
+        <details style="margin-top:10px;">
+          <summary>Texte du courrier (extraction automatique)</summary>
+          <pre class="texte-recu">{{ ctx.texte }}</pre>
+        </details>
+        {% else %}
+        <p class="aide" style="margin-top:10px;">Texte du courrier non disponible
+          (scan illisible ou extraction en cours). Résumez les points à traiter dans
+          « Consignes » si vous souhaitez l'assistance IA.</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="bloc">
+      <h2>Destinataire, nature et modèle</h2>
+      <div class="corps">
+        <form method="POST" action="{{ url_for('courrier.preparer') }}">
+          <input type="hidden" name="entrant" value="{{ entrant_id }}">
+
+          {% if ctx.suggestions %}
+          <div class="encart">
+            Expéditeur reconnu dans l'annuaire :
+            {% for s in ctx.suggestions %}
+              <a href="#" onclick="choisirFiche('{{ s.id }}');return false;"><strong>{{ s.organisation }}</strong></a>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+            — vérifiez avant de continuer.
+          </div>
+          {% endif %}
+
+          <div class="rang">
+            <div class="champ" style="flex:2;">
+              <label for="f_corr">Destinataire (annuaire)</label>
+              <select id="f_corr" name="correspondant_id" onchange="majFiche()">
+                <option value="">— hors annuaire —</option>
+                {% for cat in categories %}
+                  <optgroup label="{{ cat.nom }}">
+                  {% for f in annuaire if f.categorie == cat.code %}
+                    <option value="{{ f.id }}" {% if champs.correspondant_id == f.id %}selected{% endif %}>
+                      {{ f.organisation or f.nom }}{% if f.a_verifier %} (fiche à vérifier){% endif %}
+                    </option>
+                  {% endfor %}
+                  </optgroup>
+                {% endfor %}
+              </select>
+              <div class="aide" id="aide_fiche"></div>
+            </div>
+            <div class="champ" id="bloc_libre">
+              <label for="f_libre">Ou destinataire hors annuaire</label>
+              <input type="text" id="f_libre" name="correspondant_libre" value="{{ champs.correspondant_libre or '' }}"
+                     placeholder="Organisation ou nom">
+            </div>
+            <div class="champ" id="bloc_cat">
+              <label for="f_cat">Catégorie</label>
+              <select id="f_cat" name="categorie" onchange="majModele()">
+                {% for cat in categories %}<option value="{{ cat.code }}">{{ cat.nom }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="f_nature">Nature de la réponse</label>
+              <select id="f_nature" name="nature" onchange="majModele()">
+                {% for code, lib in natures.items() %}
+                <option value="{{ code }}" {% if champs.nature == code %}selected{% endif %}>{{ lib }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="champ" style="flex:2;">
+              <label for="f_modele">Modèle</label>
+              <select id="f_modele" name="modele_id">
+                <option value="">— choisi automatiquement —</option>
+                {% for m in modeles %}
+                <option value="{{ m.id }}" data-nature="{{ m.nature }}">{{ m.nom }}{% if m.statut != 'valide' %} (non validé){% endif %}</option>
+                {% endfor %}
+              </select>
+              <div class="aide" id="aide_modele">
+                {% if not modeles %}Aucun modèle validé : la responsable GED doit en valider dans la Banque de courriers.{% endif %}
+              </div>
+            </div>
+          </div>
+
+          <div class="rang">
+            <div class="champ" style="flex:2;">
+              <label for="f_objet">Objet du courrier</label>
+              <input type="text" id="f_objet" name="objet" value="{{ champs.objet or '' }}" required>
+            </div>
+            <div class="champ">
+              <label for="f_service">Service émetteur</label>
+              <select id="f_service" name="service">
+                {% for code, nom in services.items() %}
+                <option value="{{ code }}" {% if champs.service == code %}selected{% endif %}>{{ nom }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="f_ref">Référence du courrier reçu</label>
+              <input type="text" id="f_ref" name="ref_entrant" value="{{ champs.ref_entrant or '' }}"
+                     placeholder="Ex : BCC/DG/2026/145">
+              <div class="aide">Telle qu'elle figure sur le courrier reçu.</div>
+            </div>
+            <div class="champ">
+              <label for="f_date_e">Date du courrier reçu</label>
+              <input type="date" id="f_date_e" name="date_entrant" value="{{ champs.date_entrant or '' }}">
+            </div>
+            <div class="champ">
+              <label for="f_date_r">Date de réception</label>
+              <input type="date" id="f_date_r" name="date_reception" value="{{ champs.date_reception or '' }}">
+            </div>
+          </div>
+
+          <div class="champ">
+            <label for="f_objet_e">Objet du courrier reçu</label>
+            <input type="text" id="f_objet_e" name="objet_entrant" value="{{ champs.objet_entrant or '' }}">
+          </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="f_sig">Signataire</label>
+              <select id="f_sig" name="signataire">
+                {% for s in signataires %}
+                <option value="{{ s.code }}">{{ s.fonction }}{% if s.nom %} — {{ s.nom }}{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="champ" style="flex:2;">
+              <label for="f_copies">Copies (séparées par ;)</label>
+              <input type="text" id="f_copies" name="copies" value="{{ champs.copies or '' }}">
+            </div>
+          </div>
+
+          <div class="champ">
+            <label for="f_consignes">Consignes pour la réponse</label>
+            <textarea id="f_consignes" name="consignes"
+                      placeholder="Points à traiter, décision prise, éléments à joindre… Utilisés par l'assistance IA.">{{ champs.consignes or '' }}</textarea>
+          </div>
+
+          <button type="submit" class="pleine">Générer le projet de réponse</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+
+<script>
+var URL_FICHE = "{{ url_for('courrier.api_fiche', cid='__ID__') }}";
+var URL_MODELE = "{{ url_for('courrier.api_modele') }}";
+var categorieCourante = "";
+
+function choisirFiche(id) {
+  document.getElementById('f_corr').value = id;
+  majFiche();
+}
+
+function majFiche() {
+  var id = document.getElementById('f_corr').value;
+  var aide = document.getElementById('aide_fiche');
+  document.getElementById('bloc_libre').style.display = id ? 'none' : 'block';
+  document.getElementById('bloc_cat').style.display = id ? 'none' : 'block';
+  if (!id) { aide.textContent = ''; categorieCourante = document.getElementById('f_cat').value; majModele(); return; }
+  fetch(URL_FICHE.replace('__ID__', encodeURIComponent(id)))
+    .then(function (r) { return r.json(); })
+    .then(function (f) {
+      categorieCourante = f.categorie || '';
+      aide.textContent = (f.categorie_nom || '') + (f.registre ? ' — registre ' + f.registre : '')
+        + (f.confidentiel ? ' — confidentiel' : '') + (f.a_verifier ? ' — fiche à vérifier' : '');
+      if (f.signataire_defaut) { document.getElementById('f_sig').value = f.signataire_defaut; }
+      var copies = document.getElementById('f_copies');
+      if (f.copies && !copies.value) { copies.value = f.copies; }
+      majModele();
+    });
+}
+
+function majModele() {
+  var nature = document.getElementById('f_nature').value;
+  var sel = document.getElementById('f_modele');
+  var corr = document.getElementById('f_corr').value;
+  if (!corr) { categorieCourante = document.getElementById('f_cat').value; }
+  for (var i = 0; i < sel.options.length; i++) {
+    var o = sel.options[i];
+    if (!o.dataset.nature) { continue; }
+    o.hidden = o.dataset.nature !== nature;
+  }
+  var url = URL_MODELE + '?nature=' + nature + '&categorie=' + encodeURIComponent(categorieCourante)
+          + '&correspondant=' + encodeURIComponent(corr);
+  fetch(url).then(function (r) { return r.json(); }).then(function (m) {
+    var aide = document.getElementById('aide_modele');
+    if (m.id) {
+      sel.value = m.id;
+      aide.textContent = 'Modèle retenu : ' + m.nom + (m.statut !== 'valide' ? ' — non encore validé par la responsable GED' : '');
+    } else {
+      sel.value = '';
+      aide.textContent = 'Aucun modèle validé pour cette nature : le projet partira d’un courrier libre.';
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', majFiche);
+</script>
+</body>
+</html>

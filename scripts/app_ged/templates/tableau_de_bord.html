@@ -76,6 +76,25 @@
         </div>
       </div>
 
+      {% if kpi.courrier %}
+      <div class="carte {% if kpi.courrier.en_retard > 0 %}alerte{% endif %}">
+        <div class="valeur">{{ kpi.courrier.a_repondre }}</div>
+        <div class="etiq">Courriers sans réponse</div>
+        <div class="note">
+          {% if kpi.courrier.en_retard > 0 %}
+            {{ kpi.courrier.en_retard }} échéance(s) dépassée(s) —
+          {% endif %}
+          <a href="{{ url_for('courrier.liste') }}" style="color:inherit;">voir</a>
+        </div>
+      </div>
+
+      <div class="carte">
+        <div class="valeur">{{ kpi.courrier.a_valider + kpi.courrier.en_signature }}</div>
+        <div class="etiq">Réponses en circuit</div>
+        <div class="note">{{ kpi.courrier.a_valider }} à valider &middot; {{ kpi.courrier.en_signature }} en signature</div>
+      </div>
+      {% endif %}
+
       <div class="carte">
         <div class="valeur">{{ kpi.visa.delai_moyen or '—' }}</div>
         <div class="etiq">Délai moyen de visa</div>

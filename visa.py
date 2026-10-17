@@ -33,6 +33,13 @@ CONFIGURATION — a ajouter dans auth_config.py
         "dg@hurimoney.com",
     ]
 
+ROUTAGE DES SIGNATAIRES (module Courrier)
+-----------------------------------------
+Un courrier de reponse porte le code de son signataire (DG, DAF, DT...).
+Les adresses rattachees a chaque code se reglent dans l'ecran Parametres
+du courrier. Un signataire ne voit que les courriers qui lui sont adresses ;
+la Direction Generale (UTILISATEURS_DG) voit tout.
+
 INTEGRATION — deux lignes dans app.py
 -------------------------------------
     from visa import bp_visa, init_visa, deposer_pour_visa
@@ -44,6 +51,7 @@ import json
 import logging
 import re
 import shutil
+import time
 import unicodedata
 from datetime import datetime
 from pathlib import Path
@@ -94,9 +102,19 @@ def _nettoyer(texte):
     return re.sub(r"[^A-Z0-9_\-]", "", texte)[:60]
 
 
-def _reference():
-    """Reference unique et lisible : VISA-AAAAMMJJ-HHMMSS."""
-    return datetime.now().strftime("VISA-%Y%m%d-%H%M%S")
+def _reference(existantes=None):
+    """Reference unique et lisible : VISA-AAAAMMJJ-HHMMSS.
+
+    Deux depots dans la meme seconde produisaient la meme reference, et le
+    second ecrasait le premier dans visas.json : on attend la seconde
+    suivante plutot que de changer le format (les 6 derniers caracteres
+    servent de cle dans les noms de fichier)."""
+    existantes = existantes or {}
+    ref = datetime.now().strftime("VISA-%Y%m%d-%H%M%S")
+    while ref in existantes:
+        time.sleep(0.25)
+        ref = datetime.now().strftime("VISA-%Y%m%d-%H%M%S")
+    return ref
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +134,30 @@ def est_dg():
     if not email:
         return True
     return email.lower() in _adresses_dg()
+
+
+def _codes_signataire():
+    """Codes de signataire (DAF, DT...) rattaches a l'utilisateur connecte."""
+    email = session.get("email")
+    if not email:
+        return set()
+    try:
+        from courrier import codes_signataire_pour  # noqa: PLC0415
+        return codes_signataire_pour(email)
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def peut_viser():
+    """La Direction Generale, ou un signataire declare dans le module Courrier."""
+    return est_dg() or bool(_codes_signataire())
+
+
+def _visible(d):
+    """Un document sans signataire designe revient a la Direction Generale."""
+    if est_dg():
+        return True
+    return d.get("signataire", "DG") in _codes_signataire()
 
 
 def _reserve_dg(vue):
@@ -140,7 +182,7 @@ def deposer_pour_visa(chemin_pdf, metadonnees):
     """
     DOSSIER_A_VISER.mkdir(exist_ok=True)
 
-    ref = _reference()
+    ref = _reference(_charger())
     objet = _nettoyer(metadonnees.get("objet", ""))
     nom = (f"AVISER_HM26-{metadonnees.get('service', 'XXX')}-"
            f"{metadonnees.get('type_doc', 'XXX')}_"
@@ -168,6 +210,10 @@ def deposer_pour_visa(chemin_pdf, metadonnees):
         "action_statut": "",
         "action_note": "",
     }
+    # Metadonnees propres au module Courrier : signataire, projet d'origine.
+    for cle in ("signataire", "reponse_ref"):
+        if metadonnees.get(cle):
+            donnees[ref][cle] = metadonnees[cle]
     _sauver(donnees)
     return ref
 
@@ -196,14 +242,27 @@ def _enrichir(ref, d, services, types):
         "vise_le": d.get("vise_le", ""),
         "action_statut": d.get("action_statut", ""),
         "statut": d.get("statut", ""),
+        "signataire": d.get("signataire", ""),
+        "reponse_ref": d.get("reponse_ref", ""),
+        "nb_retours": d.get("nb_retours", 0),
     }
 
 
-def lister_a_viser(services=None, types=None):
-    """Courriers en attente du visa du DG, les plus anciens d'abord."""
+STATUTS_A_VISER = ("a_viser", "attente")
+
+
+def lister_a_viser(services=None, types=None, filtrer=False):
+    """Courriers en attente de visa, les plus anciens d'abord.
+
+    filtrer=True : seulement ceux que l'utilisateur connecte peut viser.
+    Le statut "attente" est celui qu'ecrivait l'ancienne resoumission :
+    on le lit toujours pour ne perdre aucun document.
+    """
     services, types = services or {}, types or {}
     liste = [_enrichir(r, d, services, types)
-             for r, d in _charger().items() if d.get("statut") == "a_viser"]
+             for r, d in _charger().items()
+             if d.get("statut") in STATUTS_A_VISER
+             and (not filtrer or _visible(d))]
     liste.sort(key=lambda x: x["jours"], reverse=True)
     return liste
 
@@ -237,13 +296,15 @@ def lister_retournes(services=None, types=None):
 # ---------------------------------------------------------------------------
 @bp_visa.route("/visa")
 def ecran_visa():
-    from app import SERVICES, TYPES  # noqa: PLC0415
-    if not est_dg():
-        flash("Cet écran est réservé à la Direction Générale.", "error")
+    from flask import current_app  # noqa: PLC0415
+    services = current_app.config.get("GED_SERVICES", {})
+    types = current_app.config.get("GED_TYPES", {})
+    if not peut_viser():
+        flash("Cet écran est réservé à la Direction et aux signataires.", "error")
         return redirect(url_for("index"))
     return render_template("visa.html",
-                           a_viser=lister_a_viser(SERVICES, TYPES),
-                           services=SERVICES, types=TYPES)
+                           a_viser=lister_a_viser(services, types, filtrer=True),
+                           services=services, types=types)
 
 
 @bp_visa.route("/visa/<reference>/document")
@@ -261,15 +322,14 @@ def document(reference):
 
 @bp_visa.route("/visa/<reference>", methods=["POST"])
 def enregistrer(reference):
-    if not est_dg():
-        flash("Action réservée à la Direction Générale.", "error")
-        return redirect(url_for("index"))
-
     donnees = _charger()
     d = donnees.get(reference)
-    if not d or d.get("statut") != "a_viser":
+    if not d or d.get("statut") not in STATUTS_A_VISER:
         flash("Ce courrier n'est plus en attente de visa.", "error")
         return redirect(url_for("visa.ecran_visa"))
+    if not peut_viser() or not _visible(d):
+        flash("Ce courrier est adressé à un autre signataire.", "error")
+        return redirect(url_for("index"))
 
     decision = request.form.get("decision", "")
     observations = (request.form.get("observations") or "").strip()
@@ -386,6 +446,44 @@ def init_visa(app, protection=None):
 
     print(f"[VISA] Circuit de visa actif — {len(_adresses_dg())} adresse(s) DG")
 
+def _remettre_au_visa(d):
+    """Repasse un document retourne en attente de visa, historique conserve."""
+    d["statut"] = "a_viser"
+    d["action_statut"] = ""
+    d["resoumis_le"] = datetime.now().isoformat(timespec="seconds")
+    d["nb_retours"] = int(d.get("nb_retours", 0)) + 1
+    d.setdefault("historique_retours", []).append({
+        "le": d.get("vise_le", ""),
+        "motif": d.get("observations", ""),
+    })
+    d["observations"] = ""
+    # Le delai de visa repart de la resoumission.
+    d["depose_le"] = d["resoumis_le"]
+
+
+def resoumettre_document(reference, chemin_pdf=None, maj=None):
+    """Remplace le PDF d'un document retourne puis le remet au visa.
+
+    Utilise par le module Courrier : le projet corrige est regenere, il
+    remplace l'ancien fichier sans changer de reference.
+    """
+    donnees = _charger()
+    d = donnees.get(reference)
+    if not d:
+        raise ValueError("Document introuvable dans le circuit de visa.")
+    if d.get("statut") != "retourne":
+        raise ValueError("Seul un document retourné peut être resoumis.")
+    if chemin_pdf:
+        DOSSIER_A_VISER.mkdir(exist_ok=True)
+        shutil.copy2(chemin_pdf, DOSSIER_A_VISER / d["fichier"])
+    for cle, val in (maj or {}).items():
+        if val:
+            d[cle] = val
+    _remettre_au_visa(d)
+    _sauver(donnees)
+    return reference
+
+
 @bp_visa.route("/visa/<reference>/resoumettre", methods=["POST"])
 def resoumettre(reference):
     """Remet un document corrige en attente de visa.
@@ -393,6 +491,9 @@ def resoumettre(reference):
     Le retour n'est pas une fin de parcours : le document repart chez le
     DG apres correction. Sans cette route, un courrier retourne restait
     bloque sans qu'aucun ecran ne permette de le relancer.
+
+    Correctif : l'ancienne version ecrivait le statut "attente", que l'ecran
+    de visa ne lit pas — le document resoumis disparaissait.
     """
     donnees = _charger()
     d = donnees.get(reference)
@@ -404,16 +505,7 @@ def resoumettre(reference):
         flash("Seul un document retourné peut être resoumis.", "error")
         return redirect(url_for("index"))
 
-    d["statut"] = "attente"
-    d["action_statut"] = ""
-    d["resoumis_le"] = datetime.now().isoformat(timespec="seconds")
-    d["nb_retours"] = int(d.get("nb_retours", 0)) + 1
-    # On conserve le motif du retour precedent dans l'historique.
-    d.setdefault("historique_retours", []).append({
-        "le": d.get("vise_le", ""),
-        "motif": d.get("observations", ""),
-    })
-    d["observations"] = ""
+    _remettre_au_visa(d)
     _sauver(donnees)
 
     flash(f"Courrier « {d.get('objet', '')} » resoumis au visa.", "success")
@@ -460,9 +552,10 @@ def deposer_scan(reference):
         return redirect(url_for("index"))
 
     # Le projet non signe n'a plus lieu d'etre conserve.
-    ancien = DOSSIER_VISA / d["fichier"] if "DOSSIER_VISA" in globals() else None
+    # (correctif : la version precedente visait une variable inexistante)
+    ancien = DOSSIER_A_VISER / d["fichier"]
     try:
-        if ancien is not None and ancien.exists():
+        if ancien.exists():
             ancien.unlink()
     except Exception:  # noqa: BLE001
         pass

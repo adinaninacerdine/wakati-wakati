@@ -39,3 +39,6 @@ a_viser/
 auth_config.py
 
 *.avant-*
+
+# Module Courrier : données de travail et clé IA
+courrier/

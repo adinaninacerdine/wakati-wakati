@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banque de courriers — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Banque de courriers</h1>
+    <div class="contexte">Tenue et validée par la responsable GED</div>
+  </header>
+
+  <div class="contenu" style="max-width:1180px;">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <nav class="onglets">
+      <a href="{{ url_for('courrier.banque', onglet='annuaire') }}" class="{% if onglet == 'annuaire' %}actif{% endif %}">Annuaire ({{ annuaire|length }})</a>
+      <a href="{{ url_for('courrier.banque', onglet='modeles') }}" class="{% if onglet == 'modeles' %}actif{% endif %}">Modèles ({{ liste_modeles|length }})</a>
+      <a href="{{ url_for('courrier.banque', onglet='categories') }}" class="{% if onglet == 'categories' %}actif{% endif %}">Catégories et délais</a>
+      <a href="{{ url_for('courrier.banque', onglet='sauvegarde') }}" class="{% if onglet == 'sauvegarde' %}actif{% endif %}">Sauvegarde</a>
+    </nav>
+
+    {# ===================== ANNUAIRE ===================== #}
+    {% if onglet == 'annuaire' %}
+
+      {% if edite_c or nouveau_c %}
+      {% set f = edite_c or {} %}
+      <section class="bloc">
+        <h2>{% if edite_c %}Fiche : {{ f.organisation or f.nom }}{% else %}Nouvelle fiche{% endif %}</h2>
+        <div class="corps">
+          <form method="POST" action="{{ url_for('courrier.sauver_correspondant') }}">
+            <input type="hidden" name="id" value="{{ f.id or '' }}">
+            <div class="rang">
+              <div class="champ" style="flex:2;"><label>Organisation</label>
+                <input type="text" name="organisation" value="{{ f.organisation or '' }}"></div>
+              <div class="champ"><label>Catégorie</label>
+                <select name="categorie">
+                  {% for c in categories %}<option value="{{ c.code }}" {% if f.categorie == c.code %}selected{% endif %}>{{ c.nom }}</option>{% endfor %}
+                </select></div>
+            </div>
+            <div class="rang">
+              <div class="champ"><label>Nom du destinataire</label>
+                <input type="text" name="nom" value="{{ f.nom or '' }}" placeholder="Prénom Nom"></div>
+              <div class="champ"><label>Fonction</label>
+                <input type="text" name="fonction" value="{{ f.fonction or '' }}" placeholder="Gouverneur, Directeur…"></div>
+            </div>
+            <div class="rang">
+              <div class="champ"><label>Civilité exacte (bloc destinataire)</label>
+                <input type="text" name="civilite" value="{{ f.civilite or '' }}"
+                       placeholder="Monsieur le Gouverneur de la Banque Centrale des Comores"></div>
+              <div class="champ"><label>Formule d'appel</label>
+                <input type="text" name="formule_appel" value="{{ f.formule_appel or '' }}"
+                       placeholder="Monsieur le Gouverneur"></div>
+            </div>
+            <div class="rang">
+              <div class="champ"><label>Adresse (une ligne par ligne)</label>
+                <textarea name="adresse" style="min-height:70px;">{{ f.adresse or '' }}</textarea></div>
+              <div class="champ">
+                <label>Email</label><input type="email" name="email" value="{{ f.email or '' }}">
+                <label style="margin-top:10px;">Signataire par défaut</label>
+                <select name="signataire">
+                  <option value="">— celui de la catégorie —</option>
+                  {% for s in signataires %}<option value="{{ s.code }}" {% if f.signataire == s.code %}selected{% endif %}>{{ s.fonction }}</option>{% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="rang">
+              <div class="champ"><label>Copies habituelles (séparées par ;)</label>
+                <input type="text" name="copies" value="{{ f.copies or '' }}"></div>
+              <div class="champ"><label>Autres noms pour la reconnaissance (séparés par ,)</label>
+                <input type="text" name="alias" value="{{ f.alias or '' }}" placeholder="BCC, Banque Centrale"></div>
+            </div>
+            <div class="champ"><label>Notes</label>
+              <input type="text" name="notes" value="{{ f.notes or '' }}"></div>
+            <div class="rang">
+              <label class="case"><input type="checkbox" name="confidentiel" {% if f.confidentiel %}checked{% endif %}>
+                Confidentiel (IA désactivée sauf décision contraire de la DG)</label>
+              <label class="case"><input type="checkbox" name="a_verifier" {% if f.a_verifier %}checked{% endif %}>
+                Fiche à vérifier</label>
+            </div>
+            <div class="actions">
+              <button type="submit">Enregistrer la fiche</button>
+              <a class="lien-action" href="{{ url_for('courrier.banque', onglet='annuaire') }}">Annuler</a>
+            </div>
+          </form>
+          {% if edite_c %}
+          <form method="POST" action="{{ url_for('courrier.supprimer_correspondant', cid=f.id) }}"
+                onsubmit="return confirm('Supprimer cette fiche ?');" style="margin-top:12px;">
+            <button class="discret">Supprimer la fiche</button>
+          </form>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="bloc">
+        <h2><span>Annuaire des correspondants</span>
+          <a class="bouton-mineur" href="{{ url_for('courrier.banque', onglet='annuaire', correspondant='nouveau') }}">Ajouter</a></h2>
+        <table>
+          <thead><tr><th>Organisation</th><th>Catégorie</th><th>Formule d'appel</th><th>Signataire</th><th></th></tr></thead>
+          <tbody>
+          {% for f in annuaire %}
+            {% set cat = (categories|selectattr('code', 'equalto', f.categorie)|list|first) %}
+            <tr>
+              <td>{{ f.organisation or f.nom }}
+                {% if f.a_verifier %}<span class="badge alerte">à vérifier</span>{% endif %}
+                {% if f.confidentiel %}<span class="badge">confidentiel</span>{% endif %}
+              </td>
+              <td>{{ cat.nom if cat else f.categorie }}</td>
+              <td>{{ f.formule_appel or 'Madame, Monsieur (défaut)' }}</td>
+              <td>{{ f.signataire or (cat.signataire if cat else '') }}</td>
+              <td><a href="{{ url_for('courrier.banque', onglet='annuaire', correspondant=f.id) }}">Modifier</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endif %}
+
+    {# ===================== MODÈLES ===================== #}
+    {% if onglet == 'modeles' %}
+
+      {% if edite_m or nouveau_m %}
+      {% set m = edite_m or {} %}
+      <section class="bloc">
+        <h2>{% if edite_m %}Modèle : {{ m.nom }}{% else %}Nouveau modèle{% endif %}</h2>
+        <div class="corps">
+          <form method="POST" action="{{ url_for('courrier.sauver_modele') }}">
+            <input type="hidden" name="id" value="{{ m.id or '' }}">
+            <div class="rang">
+              <div class="champ" style="flex:2;"><label>Nom du modèle</label>
+                <input type="text" name="nom" value="{{ m.nom or '' }}" required></div>
+              <div class="champ"><label>Nature</label>
+                <select name="nature">
+                  {% for code, lib in natures.items() %}<option value="{{ code }}" {% if m.nature == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+                </select></div>
+            </div>
+            <div class="rang">
+              <div class="champ"><label>Catégorie</label>
+                <select name="categorie">
+                  <option value="*">Toutes catégories (générique)</option>
+                  {% for c in categories %}<option value="{{ c.code }}" {% if m.categorie == c.code %}selected{% endif %}>{{ c.nom }}</option>{% endfor %}
+                </select></div>
+              <div class="champ"><label>Propre à un correspondant (facultatif)</label>
+                <select name="correspondant_id">
+                  <option value="">— non —</option>
+                  {% for f in annuaire %}<option value="{{ f.id }}" {% if m.correspondant_id == f.id %}selected{% endif %}>{{ f.organisation or f.nom }}</option>{% endfor %}
+                </select></div>
+            </div>
+            <label>Variables (cliquer pour insérer)</label>
+            <div class="variables">
+              {% for nom, lib in variables.items() %}<code title="{{ lib }}" onclick="inserer('{{ nom }}')">{{ '{{' }}{{ nom }}{{ '}}' }}</code>{% endfor %}
+            </div>
+            <div class="champ">
+              <textarea id="m_corps" name="corps" class="corps-lettre" required>{{ m.corps or '{{formule_appel}},\n\n{{paragraphe_central}}\n\n{{formule_politesse}}' }}</textarea>
+              <div class="aide">Du « {{ '{{' }}formule_appel{{ '}}' }} » à la formule de politesse. L'en-tête WAKATI,
+                les références, le destinataire, l'objet et la signature sont ajoutés automatiquement.
+                Laissez <code>{{ '{{' }}paragraphe_central{{ '}}' }}</code> là où l'agent — ou l'IA — rédigera la réponse aux points soulevés.
+                Un paragraphe = un bloc séparé par une ligne vide.</div>
+            </div>
+            <label class="case"><input type="checkbox" name="valider" {% if m.statut == 'valide' %}checked{% endif %}>
+              Je valide ce modèle : il sera proposé aux rédacteurs</label>
+            <div class="actions">
+              <button type="submit">Enregistrer le modèle</button>
+              <a class="lien-action" href="{{ url_for('courrier.banque', onglet='modeles') }}">Annuler</a>
+            </div>
+            <p class="aide">Toute modification du texte d'un modèle validé le repasse « à valider »,
+              sauf si la case ci-dessus est cochée.</p>
+          </form>
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="bloc">
+        <h2><span>Bibliothèque de modèles</span>
+          <a class="bouton-mineur" href="{{ url_for('courrier.banque', onglet='modeles', modele='nouveau') }}">Ajouter</a></h2>
+        <table>
+          <thead><tr><th>Modèle</th><th>Nature</th><th>Portée</th><th>Statut</th><th></th></tr></thead>
+          <tbody>
+          {% for m in liste_modeles|sort(attribute='nature') %}
+            {% set cat = (categories|selectattr('code', 'equalto', m.categorie)|list|first) %}
+            {% set fiche = (annuaire|selectattr('id', 'equalto', m.correspondant_id)|list|first) %}
+            <tr>
+              <td>{{ m.nom }}<div class="aide">v{{ m.version }}{% if m.valide_par %} — validé par {{ m.valide_par }} le {{ m.valide_le|date_courte }}{% endif %}</div></td>
+              <td>{{ natures.get(m.nature, m.nature) }}</td>
+              <td>{% if fiche %}{{ fiche.organisation }}{% elif cat %}{{ cat.nom }}{% else %}Toutes catégories{% endif %}</td>
+              <td><span class="badge {% if m.statut == 'valide' %}ok{% else %}alerte{% endif %}">{{ 'Validé' if m.statut == 'valide' else 'À valider' }}</span></td>
+              <td class="actions-cellule">
+                <a href="{{ url_for('courrier.banque', onglet='modeles', modele=m.id) }}">Modifier</a>
+                {% if m.statut != 'valide' %}
+                <form method="POST" action="{{ url_for('courrier.action_modele', mid=m.id, action='valider') }}"><button class="mineur">Valider</button></form>
+                {% else %}
+                <form method="POST" action="{{ url_for('courrier.action_modele', mid=m.id, action='retirer') }}"><button class="discret">Retirer</button></form>
+                {% endif %}
+                <form method="POST" action="{{ url_for('courrier.action_modele', mid=m.id, action='dupliquer') }}"><button class="discret">Dupliquer</button></form>
+                <form method="POST" action="{{ url_for('courrier.action_modele', mid=m.id, action='supprimer') }}"
+                      onsubmit="return confirm('Supprimer ce modèle ?');"><button class="discret">Supprimer</button></form>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <div class="corps"><p class="aide" style="margin:0;">Seuls les modèles validés sont proposés aux rédacteurs.
+          Pour un correspondant donné, l'application retient le modèle le plus précis : propre au
+          correspondant, puis à sa catégorie, puis générique.</p></div>
+      </section>
+    {% endif %}
+
+    {# ===================== CATÉGORIES ===================== #}
+    {% if onglet == 'categories' %}
+      <form method="POST" action="{{ url_for('courrier.sauver_categories') }}">
+      {% for c in categories %}
+      <section class="bloc">
+        <h2><span>{{ c.nom }}</span><span class="aide">{{ c.exemples }}</span></h2>
+        <div class="corps">
+          <div class="rang">
+            <div class="champ"><label>Nom</label><input type="text" name="{{ c.code }}__nom" value="{{ c.nom }}"></div>
+            <div class="champ"><label>Exemples</label><input type="text" name="{{ c.code }}__exemples" value="{{ c.exemples }}"></div>
+            <div class="champ"><label>Registre</label><input type="text" name="{{ c.code }}__registre" value="{{ c.registre }}"></div>
+            <div class="champ"><label>Signataire par défaut</label>
+              <select name="{{ c.code }}__signataire">
+                {% for s in signataires %}<option value="{{ s.code }}" {% if c.signataire == s.code %}selected{% endif %}>{{ s.fonction }}</option>{% endfor %}
+              </select></div>
+          </div>
+          <div class="rang">
+            <div class="champ"><label>Délai de réponse (heures)</label>
+              <input type="number" min="1" name="{{ c.code }}__delai_h" value="{{ c.delai_h }}"></div>
+            <div class="champ"><label>Délai si urgent (heures)</label>
+              <input type="number" min="1" name="{{ c.code }}__delai_urgent_h" value="{{ c.delai_urgent_h }}"></div>
+            <div class="champ" style="flex:2;"><label>Formule de politesse</label>
+              <input type="text" name="{{ c.code }}__formule_politesse" value="{{ c.formule_politesse }}"></div>
+          </div>
+          <div class="rang">
+            <label class="case"><input type="checkbox" name="{{ c.code }}__ia_autorisee" {% if c.ia_autorisee %}checked{% endif %}> Assistance IA autorisée</label>
+            <label class="case"><input type="checkbox" name="{{ c.code }}__confidentiel" {% if c.confidentiel %}checked{% endif %}> Catégorie confidentielle</label>
+          </div>
+        </div>
+      </section>
+      {% endfor %}
+      <button type="submit" class="pleine">Enregistrer les catégories</button>
+      </form>
+    {% endif %}
+
+    {# ===================== SAUVEGARDE ===================== #}
+    {% if onglet == 'sauvegarde' %}
+      <section class="bloc">
+        <h2>Sauvegarde et restauration</h2>
+        <div class="corps">
+          <p>L'export contient l'annuaire, les modèles et les catégories. À conserver
+            après chaque série de modifications importantes.</p>
+          <div class="actions"><a class="bouton" href="{{ url_for('courrier.exporter') }}">Télécharger la sauvegarde</a></div>
+          <hr style="border:0;border-top:1px solid var(--bord);margin:22px 0;">
+          <form method="POST" action="{{ url_for('courrier.importer') }}" enctype="multipart/form-data"
+                onsubmit="return confirm('Remplacer la banque actuelle par cette sauvegarde ?');">
+            <div class="champ"><label>Restaurer depuis une sauvegarde (.json)</label>
+              <input type="file" name="fichier" accept=".json,application/json" required></div>
+            <button type="submit" class="mineur">Restaurer</button>
+            <p class="aide">Remplace entièrement l'annuaire, les modèles et les catégories.</p>
+          </form>
+        </div>
+      </section>
+    {% endif %}
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+
+<script>
+function inserer(nom) {
+  var z = document.getElementById('m_corps');
+  if (!z) { return; }
+  var v = '{' + '{' + nom + '}' + '}';
+  var pos = z.selectionStart || z.value.length;
+  z.value = z.value.slice(0, pos) + v + z.value.slice(z.selectionEnd || pos);
+  z.focus();
+  z.selectionStart = z.selectionEnd = pos + v.length;
+}
+</script>
+</body>
+</html>

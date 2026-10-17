@@ -153,6 +153,31 @@ class ZohoConnector:
         return resp.json()
 
 
+    def sheet_update_records(self, workbook_id, worksheet_name, criteria, data):
+        """Met a jour les lignes qui satisfont `criteria` (API tabulaire).
+
+        criteria : ex. '"Nom du fichier"="HM26-DGA-CENT_..."'
+        data     : dict {en-tete: valeur}
+        Utilise par le module Courrier pour passer un entrant en « Répondu ».
+        Leve en cas d'echec : l'appelant decide de l'ignorer.
+        """
+        url = (f"https://sheet.zoho.com/api/v2/{workbook_id}"
+               f"?method=worksheet.records.update")
+        headers = self._headers({'Content-Type': 'application/x-www-form-urlencoded'})
+        payload = {
+            'worksheet_name': worksheet_name,
+            'criteria': criteria,
+            'data': json.dumps(data),
+            'first_match_only': 'true',
+        }
+        resp = requests.post(url, headers=headers, data=payload, timeout=30)
+        resp.raise_for_status()
+        corps = resp.json()
+        if corps.get('status') == 'failure':
+            raise RuntimeError(f"Zoho Sheet : {corps}")
+        return corps
+
+
 def get_refresh_token(grant_code):
     resp = requests.post(f'{ACCOUNTS_URL}/oauth/v2/token', params={
         'code': grant_code,

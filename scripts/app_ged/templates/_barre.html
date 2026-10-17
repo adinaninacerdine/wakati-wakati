@@ -1,5 +1,6 @@
 {# Barre laterale partagee — modifier ICI et nulle part ailleurs.
-   Chaque page passe la variable `page` : courriers | tableau | visa #}
+   Chaque page passe la variable `page` :
+   courriers | tableau | visa | courrier | banque | parametres #}
 <aside class="barre">
   <div class="marque-zone">
     <div class="marque">W A K A T I</div>
@@ -18,6 +19,22 @@
     <a class="item {% if page == 'tableau' %}actif{% endif %}" href="{{ url_for('tableau_de_bord') }}">
       <span class="ico">▦</span> Tableau de bord
     </a>
+
+    {% if courrier_actif %}
+    <div class="rubrique">Réponses</div>
+    <a class="item {% if page == 'courrier' %}actif{% endif %}" href="{{ url_for('courrier.liste') }}">
+      <span class="ico">✉</span> Courrier de réponse
+      {% if cpt_courrier and cpt_courrier.en_retard %}<span class="pastille">{{ cpt_courrier.en_retard }}</span>{% endif %}
+    </a>
+    {% if courrier_responsable %}
+    <a class="item {% if page == 'banque' %}actif{% endif %}" href="{{ url_for('courrier.banque') }}">
+      <span class="ico">☰</span> Banque de courriers
+    </a>
+    <a class="item {% if page == 'parametres' %}actif{% endif %}" href="{{ url_for('courrier.ecran_parametres') }}">
+      <span class="ico">⚙</span> Paramètres
+    </a>
+    {% endif %}
+    {% endif %}
 
     <div class="rubrique">Zoho</div>
     <a class="item" href="https://sheet.zoho.com/sheet/open/avaji4d47ec1cbffc4f5184dc8b3127b83ae7" target="_blank" rel="noopener">

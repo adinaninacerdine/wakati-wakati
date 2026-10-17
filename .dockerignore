@@ -30,3 +30,6 @@ _tmp/
 *.md
 Dockerfile
 docker-compose.yml
+
+# Module Courrier : données montées en volume
+courrier/

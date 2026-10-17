@@ -50,6 +50,9 @@ CONFIGURATION — notifier_config.py
     MAIL_TO = ["animation.reseau@hurimoney.com"]
     MAIL_CC = []
 
+    # --- Assistance IA du module Courrier (facultatif) ---
+    IA_API_KEY = "gsk_..."   # clé Groq ; peut aussi se saisir dans l'écran Paramètres
+
     # --- Zoho Sign ---
     DG_NAME  = ""
     DG_EMAIL = ""
@@ -214,21 +217,26 @@ def _mail_token():
 # 1. ZOHO CLIQ
 # ===========================================================================
 def _build_cliq_payload(doc):
+    # « titre » et « libelle_deposant » sont facultatifs : le module Courrier
+    # s'en sert pour ses relances et ses projets à valider.
+    titre = doc.get("titre")
     payload = {
-        "text": f"*Nouveau document déposé* — {doc.get('service', 'N/A')}",
+        "text": (f"*{titre}*" if titre
+                 else f"*Nouveau document déposé* — {doc.get('service', 'N/A')}"),
         "card": {
             "title": f"{doc.get('numero', '')} · {doc.get('nom_fichier', '')}",
             "theme": "modern-inline",
         },
         "slides": [{
             "type": "table",
-            "title": "Détails du dépôt",
+            "title": "Détails" if titre else "Détails du dépôt",
             "data": {
                 "headers": ["Champ", "Valeur"],
                 "rows": [
                     {"Champ": "Type", "Valeur": str(doc.get("type_doc", "-"))},
                     {"Champ": "Service", "Valeur": str(doc.get("service", "-"))},
-                    {"Champ": "Déposant", "Valeur": str(doc.get("deposant", "-"))},
+                    {"Champ": str(doc.get("libelle_deposant", "Déposant")),
+                     "Valeur": str(doc.get("deposant", "-"))},
                     {"Champ": "Date", "Valeur": str(doc.get("date", "-"))},
                 ],
             },

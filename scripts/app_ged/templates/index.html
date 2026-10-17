@@ -97,6 +97,18 @@
                    placeholder="Ex : réponse appel d'offres transport">
           </div>
 
+          {% if courrier_actif %}
+          <div class="champ" id="s_bloc_reponse">
+            <label for="s_reponse">Réponse attendue</label>
+            <select id="s_reponse" name="reponse_attendue">
+              <option value="normale">Oui — délai normal (48 h)</option>
+              <option value="urgente">Oui — urgent (24 h)</option>
+              <option value="aucune">Non, pas de réponse attendue</option>
+            </select>
+            <div class="aide">Fixe l'échéance de réponse et les relances dans #ged-notifications.</div>
+          </div>
+          {% endif %}
+
           <input type="hidden" name="deposant" value="Service GED">
 
           <button type="submit" class="pleine" id="s_bouton">Envoyer</button>
@@ -204,6 +216,12 @@
                 Retourné par {{ r.vise_par }}{% if r.jours %} &mdash; il y a {{ r.jours }} jour(s){% endif %}
               </div>
             </div>
+            {% if r.reponse_ref and courrier_actif %}
+            <a class="bouton-mineur" href="{{ url_for('courrier.edition', ref=r.reponse_ref) }}"
+               title="Corriger le projet puis le resoumettre depuis le module Courrier.">
+              Corriger le projet
+            </a>
+            {% else %}
             <form method="POST"
                   action="{{ url_for('visa.resoumettre', reference=r.reference) }}">
               <button type="submit" class="mineur"
@@ -211,6 +229,7 @@
                 Resoumettre au visa
               </button>
             </form>
+            {% endif %}
           </div>
           {% endfor %}
         {% else %}
@@ -247,10 +266,15 @@
                 {% if s.statut == 'retourne' %}Retourné par{% else %}Visé par{% endif %} {{ s.vise_par }}{% if s.jours %} — il y a {{ s.jours }} jour(s){% endif %}
               </div>
             </div>
-            <form method="POST"
-                  action="{{ url_for('visa.cloturer', reference=s.reference) }}">
-              <button type="submit" class="mineur">Marquer traité</button>
-            </form>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              {% if courrier_actif and s.sens == 'entrant' %}
+              <a class="bouton-mineur" href="{{ url_for('courrier.preparer', entrant=s.reference) }}">Préparer la réponse</a>
+              {% endif %}
+              <form method="POST"
+                    action="{{ url_for('visa.cloturer', reference=s.reference) }}">
+                <button type="submit" class="mineur" style="width:100%;">Marquer traité</button>
+              </form>
+            </div>
           </div>
           {% endfor %}
         {% else %}
@@ -276,7 +300,7 @@
                     data-fichier="{{ c.fichier }}" data-service="{{ c.service }}"
                     data-type="{{ c.type_doc }}" data-date="{{ c.date_doc }}"
                     data-objet="{{ c.objet }}" data-correspondant="{{ c.correspondant }}"
-                    data-sens="{{ c.sens }}">Archiver</button>
+                    data-sens="{{ c.sens }}" data-numero="{{ c.numero }}">Archiver</button>
           </div>
           {% endfor %}
         {% else %}
@@ -365,6 +389,17 @@
                    placeholder="Ex : lettre de condoléances PFSS">
           </div>
 
+          {% if courrier_actif %}
+          <div class="champ" id="a_bloc_reponse">
+            <label for="a_reponse">Réponse attendue</label>
+            <select id="a_reponse" name="reponse_attendue">
+              <option value="normale">Oui — délai normal (48 h)</option>
+              <option value="urgente">Oui — urgent (24 h)</option>
+              <option value="aucune">Non, pas de réponse attendue</option>
+            </select>
+          </div>
+          {% endif %}
+
           <button type="submit" class="pleine">Archiver le document</button>
         </form>
       </div>
@@ -418,6 +453,12 @@ function majLibelle(prefixe) {
                                   : "Ex : Banque Centrale des Comores";
     }
     if (prefixe === 's') { majCircuit(entrant); }
+    var blocRep = document.getElementById(prefixe === 's' ? 's_bloc_reponse' : 'a_bloc_reponse');
+    if (blocRep) {
+        // L'archivage d'un courrier signé déjà suivi n'ouvre pas de nouveau suivi.
+        var depuisSigne = prefixe === 'a' && document.getElementById('fichier_local').value;
+        blocRep.style.display = (entrant && !depuisSigne) ? 'block' : 'none';
+    }
 }
 
 // Entrant -> visa interne du DG, gratuit. Sortant -> Zoho Sign.
@@ -460,6 +501,9 @@ function choisir(bouton) {
     majLibelle('a');
 
     majNumero();
+    // Réponse issue du module Courrier : le numéro imprimé sur le courrier
+    // est pré-rempli. La responsable GED garde la main pour le changer.
+    if (d.numero) { document.getElementById('champ_numero').value = parseInt(d.numero, 10); }
     document.getElementById('formulaire').scrollIntoView({behavior: 'smooth', block: 'center'});
     document.getElementById('champ_numero').focus();
 }
@@ -469,6 +513,7 @@ function annuler() {
     document.getElementById('bandeau_sel').style.display = 'none';
     document.getElementById('bloc_fichier').style.display = 'block';
     document.getElementById('a_pdf').required = true;
+    majLibelle('a');
 }
 
 // Rappelle le dernier numéro utilisé. La saisie reste manuelle :

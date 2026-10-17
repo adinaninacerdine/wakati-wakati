@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paramètres du courrier — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Paramètres du courrier</h1>
+    <div class="contexte">Assistance IA, signataires et délais</div>
+  </header>
+
+  <div class="contenu">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('courrier.ecran_parametres') }}" autocomplete="off">
+
+      <!-- IA -->
+      <section class="bloc">
+        <h2><span>Assistance IA</span>
+          <span class="badge {% if p.ia.actif and cle %}ok{% else %}alerte{% endif %}">
+            {% if not p.ia.actif %}Désactivée{% elif not cle %}Sans clé{% else %}Active{% endif %}</span></h2>
+        <div class="corps">
+          <label class="case" style="margin-bottom:14px;"><input type="checkbox" name="ia_actif" {% if p.ia.actif %}checked{% endif %}>
+            Proposer l'assistance IA aux rédacteurs</label>
+
+          <div class="rang">
+            <div class="champ"><label for="p_fourn">Fournisseur</label>
+              <select id="p_fourn" name="ia_fournisseur" onchange="majUrl()">
+                {% for code, f in fournisseurs.items() %}
+                <option value="{{ code }}" data-url="{{ f.url }}" {% if p.ia.fournisseur == code %}selected{% endif %}>{{ f.nom }}</option>
+                {% endfor %}
+              </select></div>
+            <div class="champ" style="flex:2;"><label for="p_url">Adresse de l'API</label>
+              <input type="url" id="p_url" name="ia_base_url" value="{{ p.ia.base_url }}"></div>
+          </div>
+
+          <div class="rang">
+            <div class="champ" style="flex:2;"><label for="p_modele">Modèle</label>
+              <input type="text" id="p_modele" name="ia_modele" value="{{ p.ia.modele }}">
+              <div class="aide">Groq retire régulièrement des modèles : vérifiez le nom dans
+                la console du fournisseur. Défaut retenu : <code>openai/gpt-oss-120b</code>
+                (même modèle que l'assistant du CRM Odoo).</div></div>
+            <div class="champ"><label for="p_cle">Clé d'API</label>
+              <input type="password" id="p_cle" name="ia_cle" value="" placeholder="{% if cle %}configurée {{ cle }}{% else %}non configurée{% endif %}">
+              <div class="aide">Laisser vide pour conserver la clé actuelle.</div>
+              {% if cle %}<label class="case" style="margin-top:6px;"><input type="checkbox" name="ia_effacer_cle"> Effacer la clé</label>{% endif %}
+            </div>
+          </div>
+
+          <div class="rang">
+            <div class="champ"><label>Température</label>
+              <input type="number" step="0.1" min="0" max="1" name="ia_temperature" value="{{ p.ia.temperature }}"></div>
+            <div class="champ"><label>Jetons maximum</label>
+              <input type="number" min="256" name="ia_max_tokens" value="{{ p.ia.max_tokens }}"></div>
+            <div class="champ"><label>Délai d'attente (s)</label>
+              <input type="number" min="10" name="ia_delai_s" value="{{ p.ia.delai_s }}"></div>
+            <div class="champ"><label>Effort de réflexion (gpt-oss)</label>
+              <select name="ia_effort">
+                {% for v in ['low', 'medium', 'high'] %}<option value="{{ v }}" {% if p.ia.effort_raisonnement == v %}selected{% endif %}>{{ {'low': 'faible', 'medium': 'moyen', 'high': 'élevé'}[v] }}</option>{% endfor %}
+              </select></div>
+          </div>
+
+          <label class="case"><input type="checkbox" name="ia_anonymiser" {% if p.ia.anonymiser %}checked{% endif %}>
+            Masquer courriels, téléphones et numéros de compte avant l'envoi au fournisseur</label>
+          <label class="case" style="margin-top:6px;"><input type="checkbox" name="ia_confidentiels" {% if p.ia.autoriser_confidentiels %}checked{% endif %}>
+            Autoriser l'IA sur les correspondants confidentiels (décision de la DG)</label>
+
+          <p class="aide" style="margin-top:14px;">Les catégories sur lesquelles l'IA est autorisée se règlent dans
+            <a href="{{ url_for('courrier.banque', onglet='categories') }}">Banque de courriers › Catégories</a>.
+            Par défaut : désactivée pour Régulateur et Gouvernance.</p>
+
+          <div class="actions">
+            <button type="button" class="mineur" onclick="testerIA()">Tester la connexion</button>
+            <span id="test_etat" class="aide"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- SIGNATAIRES -->
+      <section class="bloc">
+        <h2>Signataires</h2>
+        <div class="corps">
+          <p class="aide" style="margin-top:0;">La fonction et le nom s'impriment sous la signature. L'adresse
+            sert au routage : un signataire ne voit dans l'écran Visa que les courriers qui
+            lui sont adressés (la Direction Générale voit tout). L'adresse doit aussi figurer
+            dans UTILISATEURS_AUTORISES (auth_config.py).</p>
+          <input type="hidden" name="nb_signataires" value="{{ signataires|length }}">
+          {% for s in signataires + [{'code': '', 'fonction': '', 'nom': '', 'email': ''}] %}
+          <div class="rang">
+            <div class="champ" style="flex:0 0 90px;min-width:90px;"><label>Code</label>
+              <input type="text" name="sig_{{ loop.index0 }}_code" value="{{ s.code }}" placeholder="{% if not s.code %}Nouveau{% endif %}"></div>
+            <div class="champ" style="flex:2;"><label>Fonction (imprimée)</label>
+              <input type="text" name="sig_{{ loop.index0 }}_fonction" value="{{ s.fonction }}"></div>
+            <div class="champ"><label>Nom</label>
+              <input type="text" name="sig_{{ loop.index0 }}_nom" value="{{ s.nom }}"></div>
+            <div class="champ"><label>Adresse</label>
+              <input type="email" name="sig_{{ loop.index0 }}_email" value="{{ s.email }}"></div>
+          </div>
+          {% endfor %}
+          <p class="aide">Vider le code d'une ligne la supprime.</p>
+        </div>
+      </section>
+
+      <!-- DÉLAIS -->
+      <section class="bloc">
+        <h2>Délais et relances</h2>
+        <div class="corps">
+          <div class="rang">
+            <div class="champ"><label>Délai par défaut (heures)</label>
+              <input type="number" min="1" name="delai_defaut_h" value="{{ p.delai_defaut_h }}"></div>
+            <div class="champ"><label>Délai urgent par défaut (heures)</label>
+              <input type="number" min="1" name="delai_urgent_defaut_h" value="{{ p.delai_urgent_defaut_h }}"></div>
+            <div class="champ"><label>Relance Cliq toutes les (heures)</label>
+              <input type="number" min="1" name="relance_intervalle_h" value="{{ p.relance_intervalle_h }}"></div>
+            <div class="champ"><label>Service émetteur par défaut</label>
+              <select name="service_defaut">
+                {% for code, nom in services.items() %}<option value="{{ code }}" {% if p.service_defaut == code %}selected{% endif %}>{{ nom }}</option>{% endfor %}
+              </select></div>
+          </div>
+          <p class="aide">Les délais propres à chaque catégorie priment sur ces valeurs. Délai décidé
+            par la Direction : 48 h, ramené à 24 h ou moins en cas d'urgence.</p>
+        </div>
+      </section>
+
+      <button type="submit" class="pleine">Enregistrer les paramètres</button>
+    </form>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+
+<script>
+function majUrl() {
+  var sel = document.getElementById('p_fourn');
+  var url = sel.options[sel.selectedIndex].dataset.url;
+  if (url) { document.getElementById('p_url').value = url; }
+}
+function testerIA() {
+  var etat = document.getElementById('test_etat');
+  etat.textContent = 'Test en cours… (enregistrez d’abord si vous avez changé le modèle ou la clé)';
+  fetch("{{ url_for('courrier.tester_ia') }}", {method: 'POST', credentials: 'same-origin'})
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      etat.textContent = d.ok ? ('OK — ' + d.modele + ' : « ' + d.texte + ' »') : ('Échec : ' + d.erreur);
+    })
+    .catch(function () { etat.textContent = 'Échec de l’appel.'; });
+}
+</script>
+</body>
+</html>

@@ -14,8 +14,11 @@ WORKDIR /app
 
 # Dépendances système : ghostscript sert à alléger les PDF volumineux
 # avant envoi en signature, la liaison depuis les Comores étant limitée.
+# Module Courrier : tesseract + poppler lisent les courriers scannés (OCR),
+# Carlito (métriques de Calibri) sert aux PDF à en-tête WAKATI.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ghostscript tzdata curl \
+        tesseract-ocr tesseract-ocr-fra poppler-utils fonts-crosextra-carlito \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,7 +29,7 @@ COPY . .
 
 # Compte non privilégié : l'application n'a aucune raison de tourner en root.
 RUN useradd -m -u 1000 ged \
-    && mkdir -p /app/donnees/a_classer \
+    && mkdir -p /app/donnees/a_classer /app/donnees/courrier \
     && chown -R ged:ged /app
 USER ged
 
