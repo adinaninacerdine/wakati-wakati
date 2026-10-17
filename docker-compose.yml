@@ -1,9 +1,17 @@
 # ============================================================
-# GED WAKATI — déploiement VPS
+# GED WAKATI — déploiement VPS (vps121585, /opt/ged-wakati)
 # ============================================================
 # Démarrage :   docker compose up -d --build
 # Journaux  :   docker compose logs -f ged
 # Mise à jour : git pull && docker compose up -d --build
+#
+# Le réseau wakati_network est partagé avec Odoo : ce Caddy sert à la
+# fois ged.wakati.km et erp.wakati.km (voir Caddyfile).
+#
+# Les données de travail sont des fichiers du dossier /opt/ged-wakati
+# montés dans le conteneur : elles survivent à une reconstruction d'image.
+# Avant le premier démarrage avec le module Courrier :
+#   mkdir -p courrier && chown 1000:1000 courrier
 
 services:
 
@@ -24,23 +32,27 @@ services:
       - ./auth_config.py:/app/auth_config.py:ro
       - ./folders_map.json:/app/folders_map.json:ro
 
-      # Données de travail — doivent survivre à une reconstruction d'image.
-      - ged-donnees:/app/donnees
+      # Données de travail — fichiers de l'hôte.
+      - ./registre_2026.csv:/app/registre_2026.csv
+      - ./en_attente.json:/app/en_attente.json
+      - ./a_classer:/app/a_classer
+      - ./visas.json:/app/visas.json
+      - ./a_viser:/app/a_viser
+
+      # Module Courrier : annuaire, modèles, projets, échéances, clé IA.
+      - ./courrier:/app/courrier
 
     environment:
       TZ: Indian/Comoro
       GED_CONTENEUR: "1"
       GED_AUTH: "1"
-      # Module Courrier : banque de modèles, projets et échéances dans le
-      # volume persistant (survivent à une reconstruction d'image).
-      GED_DONNEES: /app/donnees
 
     networks:
-      - toile
+      - wakati_network
 
   caddy:
     image: caddy:2-alpine
-    container_name: caddy-ged
+    container_name: caddy-wakati
     restart: unless-stopped
     ports:
       - "80:80"
@@ -50,26 +62,12 @@ services:
       - caddy-donnees:/data
       - caddy-config:/config
     networks:
-      - toile
+      - wakati_network
 
 volumes:
-  ged-donnees:
   caddy-donnees:
   caddy-config:
 
 networks:
-  toile:
-    driver: bridge
-
-# ------------------------------------------------------------
-# NOTE — Caddy et Odoo sur le même VPS
-# ------------------------------------------------------------
-# Si un reverse proxy occupe déjà les ports 80 et 443 (installation Odoo),
-# NE PAS démarrer le service caddy ci-dessus : il entrerait en conflit.
-# Ajouter à la place le bloc ged.wakati.km à la configuration du proxy
-# existant, et rattacher ce conteneur à son réseau :
-#
-#   networks:
-#     toile:
-#       external: true
-#       name: <réseau_du_proxy_existant>
+  wakati_network:
+    external: true
