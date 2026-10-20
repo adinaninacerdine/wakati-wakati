@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recherche — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+<style>
+  .barre-recherche { display: flex; gap: 10px; }
+  .barre-recherche input[type=search] {
+    flex: 1; padding: 13px 16px; font-size: 17px; border: 1px solid var(--navy-bord);
+    border-radius: 4px; background: var(--surface); color: var(--texte); font-family: inherit;
+  }
+  .barre-recherche input[type=search]:focus { outline: 2px solid var(--navy); outline-offset: -1px; }
+  .filtres { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  .filtres select { width: auto; min-width: 150px; font-size: 13px; padding: 6px 8px; }
+  .resultat { padding: 14px 0; border-bottom: 1px solid var(--bord); }
+  .resultat:last-child { border-bottom: 0; }
+  .resultat .titre { font-weight: 600; color: var(--accent-txt); font-size: 15px; }
+  .resultat .nom { font-size: 12px; color: var(--texte-doux); word-break: break-all; margin-top: 2px; }
+  .resultat .meta { font-size: 12.5px; color: var(--texte-doux); margin-top: 4px; }
+  .resultat .extrait { font-size: 13px; margin-top: 6px; color: var(--texte); }
+  .resultat mark { background: #FFF1A8; color: inherit; padding: 0 1px; border-radius: 2px; }
+  [data-theme="sombre"] .resultat mark { background: #6B5A00; }
+  .resultat .liens { margin-top: 6px; font-size: 13px; }
+  .resultat .liens a { color: var(--action); font-weight: 600; margin-right: 14px; }
+  .pagination { display: flex; gap: 8px; justify-content: center; margin: 18px 0 4px; align-items: center; }
+  .pagination a { color: var(--action); font-weight: 600; }
+</style>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Recherche de documents</h1>
+    <div class="contexte">{{ stats.total }} document(s) indexé(s), dont {{ stats.avec_texte }} avec leur texte</div>
+  </header>
+
+  <div class="contenu">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <section class="bloc">
+      <div class="corps">
+        <form method="GET" action="{{ url_for('recherche.ecran') }}">
+          <div class="barre-recherche">
+            <input type="search" name="q" value="{{ q }}" autofocus
+                   placeholder="Ex : banque centrale agrément, Janus facture, PFSS convention…">
+            <button type="submit">Rechercher</button>
+          </div>
+          <div class="filtres">
+            <select name="service" onchange="this.form.submit()">
+              <option value="">Tous les services</option>
+              {% for s in stats.services %}<option value="{{ s }}" {% if filtres.service == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+            <select name="type_doc" onchange="this.form.submit()">
+              <option value="">Tous les types</option>
+              {% for t in stats.types %}<option value="{{ t }}" {% if filtres.type_doc == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+            </select>
+            <select name="annee" onchange="this.form.submit()">
+              <option value="">Toutes les années</option>
+              {% for a in stats.annees %}<option value="{{ a }}" {% if filtres.annee == a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+            </select>
+            {% if stats.sens %}
+            <select name="sens" onchange="this.form.submit()">
+              <option value="">Entrants et sortants</option>
+              {% for s in stats.sens %}<option value="{{ s }}" {% if filtres.sens == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+            {% endif %}
+            {% if q or filtres.service or filtres.type_doc or filtres.annee or filtres.sens %}
+            <a class="lien-action" href="{{ url_for('recherche.ecran') }}" style="align-self:center;">Effacer</a>
+            {% endif %}
+          </div>
+          <p class="aide" style="margin:10px 0 0;">Accents et majuscules indifférents, mots partiels acceptés
+            (« conv » trouve « convention »). Une expression exacte se met entre guillemets.
+            La recherche porte aussi sur le texte des PDF.</p>
+        </form>
+      </div>
+    </section>
+
+    <section class="bloc">
+      <h2><span>{% if q %}{{ total }} résultat(s) pour « {{ q }} »{% else %}Documents les plus récents{% if total %} — {{ total }} au total{% endif %}{% endif %}</span></h2>
+      <div class="corps">
+        {% if resultats %}
+          {% for r in resultats %}
+          <div class="resultat">
+            <div class="titre">
+              {% if r.fichier_dispo %}<a href="{{ url_for('recherche.document', nom=r.nom, q=q) }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">{{ r.objet_html or r.nom }}</a>
+              {% elif r.lien %}<a href="{{ r.lien }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">{{ r.objet_html or r.nom }}</a>
+              {% else %}{{ r.objet_html or r.nom }}{% endif %}
+            </div>
+            <div class="nom">{{ r.nom }}</div>
+            <div class="meta">
+              {{ r.date or 'date inconnue' }}
+              {% if r.service %} &middot; {{ r.service }}{% endif %}
+              {% if r.type_doc %} &middot; {{ r.type_doc }}{% endif %}
+              {% if r.correspondant %} &middot; <strong>{{ r.correspondant }}</strong>{% endif %}
+              {% if r.sens %} &middot; {{ r.sens }}{% endif %}
+            </div>
+            {% if r.extrait_html and '<mark>' in r.extrait_html %}
+            <div class="extrait">… {{ r.extrait_html }} …</div>
+            {% endif %}
+            <div class="liens">
+              {% if r.fichier_dispo %}<a href="{{ url_for('recherche.document', nom=r.nom, q=q) }}" target="_blank" rel="noopener">Ouvrir le PDF</a>{% endif %}
+              {% if r.lien %}<a href="{{ r.lien }}" target="_blank" rel="noopener">Ouvrir dans WorkDrive</a>{% endif %}
+              {% if r.origine and r.origine != r.nom %}<span class="aide">ancien nom : {{ r.origine }}</span>{% endif %}
+              {% if not r.lien %}<span class="aide">pas encore dans WorkDrive{% if r.dossier %} — dossier « {{ r.dossier }} »{% endif %}{% if not r.fichier_dispo %}, fichier sur un autre poste{% endif %}</span>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+          {% if nb_pages > 1 %}
+          <div class="pagination">
+            {% if num_page > 1 %}<a href="{{ url_for('recherche.ecran', q=q, page=num_page - 1, **filtres) }}">← Précédent</a>{% endif %}
+            <span class="aide">page {{ num_page }} / {{ nb_pages }}</span>
+            {% if num_page < nb_pages %}<a href="{{ url_for('recherche.ecran', q=q, page=num_page + 1, **filtres) }}">Suivant →</a>{% endif %}
+          </div>
+          {% endif %}
+        {% elif stats.total %}
+          <p class="vide">Aucun document ne correspond. Essayez moins de mots, ou un mot plus court.</p>
+        {% else %}
+          <p class="vide">L'index est vide. Lancez une réindexation depuis le registre ci-dessous :
+            les prochains documents archivés y entreront automatiquement.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {% if reindexer %}
+    <section class="bloc">
+      <h2>Index</h2>
+      <div class="corps">
+        <p class="aide" style="margin-top:0;">Les documents archivés dans l'application sont indexés
+          automatiquement, texte compris. La réindexation reprend les lignes du registre
+          (noms, objets, correspondants, liens) sans effacer le texte déjà extrait.</p>
+        <div class="actions">
+          <form method="POST" action="{{ url_for('recherche.reindexer') }}">
+            <input type="hidden" name="source" value="sheet">
+            <button type="submit" class="mineur">Réindexer depuis le registre Zoho Sheet</button>
+          </form>
+          <form method="POST" action="{{ url_for('recherche.reindexer') }}">
+            <input type="hidden" name="source" value="csv">
+            <button type="submit" class="discret">Depuis le registre local</button>
+          </form>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+</body>
+</html>

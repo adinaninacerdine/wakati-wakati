@@ -42,3 +42,6 @@ auth_config.py
 
 # Module Courrier : données de travail et clé IA
 courrier/
+
+# Export de l index de recherche (transfert poste -> serveur)
+index_ged.jsonl

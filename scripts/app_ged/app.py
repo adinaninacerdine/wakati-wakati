@@ -102,6 +102,19 @@ except Exception as _courrier_err:  # noqa: BLE001
 
 
 # ==========================================
+# MOTEUR DE RECHERCHE
+# ==========================================
+# Index plein texte des documents archives (noms, objets, correspondants,
+# texte des PDF). Remplace la recherche a la main dans le registre Sheet.
+try:
+    import recherche
+    RECHERCHE_DISPONIBLE = recherche.bp_recherche is not None
+except Exception as _rech_err:  # noqa: BLE001
+    print(f"[GED] recherche.py indisponible ({_rech_err}) — recherche desactivee.")
+    RECHERCHE_DISPONIBLE = False
+
+
+# ==========================================
 # FLASK & ARBORESCENCE
 # ==========================================
 template_dir = os.path.join(CURRENT_DIR, 'templates')
@@ -110,6 +123,8 @@ if VISA_DISPONIBLE:
     app.register_blueprint(bp_visa)
 if COURRIER_DISPONIBLE:
     app.register_blueprint(courrier.bp_courrier)
+if RECHERCHE_DISPONIBLE:
+    app.register_blueprint(recherche.bp_recherche)
 
 
 # ==========================================
@@ -170,7 +185,8 @@ TYPES = {
     "FAC": "Facture", "CNT": "Contrat", "NOT": "Note de service", "VIR": "Virement",
     "DEM": "Demande", "ODM": "Ordre de mission", "ETA": "État / Relevé", "ACC": "Accord",
     "ATT": "Attestation", "BOR": "Bordereau", "CENT": "Courrier Entrant",
-    "CSOR": "Courrier Sortant", "PV": "Procès-verbal", "DOC": "Document divers", "MAN": "Mandat"
+    "CSOR": "Courrier Sortant", "PV": "Procès-verbal", "DOC": "Document divers", "MAN": "Mandat",
+    "DEC": "Décision"
 }
 ILES = {"NGA": "Ngazidja", "ANJ": "Anjouan", "MOH": "Mohéli"}
 
@@ -311,7 +327,7 @@ def lister_a_classer():
         resultat.append({
             "fichier": chemin.name,
             "service": infos.get("service") or service,
-            "type_doc": type_doc,
+            "type_doc": infos.get("type_doc") or type_doc,
             "date_doc": infos.get("date_doc") or date_doc,
             "objet": objet.replace("_", " "),
             "service_lib": SERVICES.get(service, service or "Service inconnu"),
@@ -468,10 +484,20 @@ if COURRIER_DISPONIBLE:
         COURRIER_DISPONIBLE = False
 
 
+if RECHERCHE_DISPONIBLE:
+    try:
+        recherche.init_recherche(app, connexion_requise if AUTH_ACTIVE else None,
+                                 services=SERVICES, types=TYPES)
+    except Exception:  # noqa: BLE001
+        logging.error("Initialisation de la recherche : %s", traceback.format_exc())
+        RECHERCHE_DISPONIBLE = False
+
+
 @app.context_processor
 def _contexte_barre():
     """Compteurs de la barre laterale, sur toutes les pages."""
-    ctx = {"courrier_actif": COURRIER_DISPONIBLE, "nb_a_viser": 0,
+    ctx = {"courrier_actif": COURRIER_DISPONIBLE, "recherche_active": RECHERCHE_DISPONIBLE,
+           "nb_a_viser": 0,
            "cpt_courrier": None, "courrier_responsable": False}
     try:
         ctx["nb_a_viser"] = len(lister_a_viser(filtrer=True)) if VISA_DISPONIBLE else 0
@@ -557,7 +583,9 @@ def index():
                 dossier_id = get_zoho_folder_id(service, type_doc)
             except Exception as map_err:
                 logging.error(f"Mapping JSON manquant, défaut. Erreur: {map_err}")
-                dossier_id = (DOSSIERS_ZOHO_DEFAUT["sortant"] if type_doc == 'CSOR'
+                # Une decision est un document emis : dossier des sortants
+                # tant que setup_folders.py n'a pas cree son dossier propre.
+                dossier_id = (DOSSIERS_ZOHO_DEFAUT["sortant"] if type_doc in ('CSOR', 'DEC')
                               else DOSSIERS_ZOHO_DEFAUT["entrant"])
 
             resp = upload_avec_diagnostic(chemin_temp, dossier_id)
@@ -645,6 +673,23 @@ def index():
             except Exception:
                 logging.error("Échec Zoho Sheet pour %s\n%s",
                               nouveau_nom, traceback.format_exc())
+
+            # Moteur de recherche : metadonnees tout de suite, texte du PDF
+            # extrait en arriere-plan sur une copie (le temporaire est
+            # supprime juste apres).
+            if RECHERCHE_DISPONIBLE:
+                try:
+                    recherche.indexer_fichier({
+                        "nom": nouveau_nom, "service": SERVICES[service],
+                        "type_doc": TYPES[type_doc], "date": date_doc,
+                        "sens": SENS.get(sens, ''), "correspondant": correspondant,
+                        "objet": objet, "lien": permalink if permalink.startswith('http') else '',
+                        "source": "archivage GED",
+                        "origine": (fichier.filename if source_signee is None else fichier_local),
+                    }, chemin_temp)
+                except Exception:  # noqa: BLE001
+                    logging.error("Indexation recherche de %s : %s", nouveau_nom,
+                                  traceback.format_exc())
 
             # La reponse archivee clot l'entrant d'origine dans le registre.
             if COLONNES_REPONSE_ACTIVES and maj_entrant:

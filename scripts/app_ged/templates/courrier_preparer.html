@@ -85,6 +85,8 @@
                 {% endfor %}
               </select>
               <div class="aide" id="aide_fiche"></div>
+              <div class="aide" id="aide_decision" style="display:none;">Décision du Directeur Général :
+                destinataire facultatif (diffusion interne, copies en bas de page).</div>
             </div>
             <div class="champ" id="bloc_libre">
               <label for="f_libre">Ou destinataire hors annuaire</label>
@@ -222,6 +224,7 @@ function majFiche() {
 
 function majModele() {
   var nature = document.getElementById('f_nature').value;
+  document.getElementById('aide_decision').style.display = nature === 'DEC' ? 'block' : 'none';
   var sel = document.getElementById('f_modele');
   var corr = document.getElementById('f_corr').value;
   if (!corr) { categorieCourante = document.getElementById('f_cat').value; }

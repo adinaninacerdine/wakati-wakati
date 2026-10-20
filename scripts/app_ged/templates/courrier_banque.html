@@ -147,6 +147,11 @@
                 <select name="nature">
                   {% for code, lib in natures.items() %}<option value="{{ code }}" {% if m.nature == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
                 </select></div>
+              <div class="champ"><label>Mise en page</label>
+                <select name="mise_en_page">
+                  {% set mep = m.mise_en_page or ('decision' if m.nature == 'DEC' else 'lettre') %}
+                  {% for code, lib in mises_en_page.items() %}<option value="{{ code }}" {% if mep == code %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+                </select></div>
             </div>
             <div class="rang">
               <div class="champ"><label>Catégorie</label>
@@ -169,7 +174,10 @@
               <div class="aide">Du « {{ '{{' }}formule_appel{{ '}}' }} » à la formule de politesse. L'en-tête WAKATI,
                 les références, le destinataire, l'objet et la signature sont ajoutés automatiquement.
                 Laissez <code>{{ '{{' }}paragraphe_central{{ '}}' }}</code> là où l'agent — ou l'IA — rédigera la réponse aux points soulevés.
-                Un paragraphe = un bloc séparé par une ligne vide.</div>
+                Un paragraphe = un bloc séparé par une ligne vide.
+                <br><strong>Mise en page Décision :</strong> une ligne par élément —
+                <code>Vu …</code>, <code>DÉCIDE</code>, <code>Article 1 · Titre</code>,
+                <code>- puce</code>, <code>| a | b | c |</code> pour un tableau.</div>
             </div>
             <label class="case"><input type="checkbox" name="valider" {% if m.statut == 'valide' %}checked{% endif %}>
               Je valide ce modèle : il sera proposé aux rédacteurs</label>
@@ -195,7 +203,7 @@
             {% set fiche = (annuaire|selectattr('id', 'equalto', m.correspondant_id)|list|first) %}
             <tr>
               <td>{{ m.nom }}<div class="aide">v{{ m.version }}{% if m.valide_par %} — validé par {{ m.valide_par }} le {{ m.valide_le|date_courte }}{% endif %}</div></td>
-              <td>{{ natures.get(m.nature, m.nature) }}</td>
+              <td>{{ natures.get(m.nature, m.nature) }}{% if (m.mise_en_page or ('decision' if m.nature == 'DEC' else 'lettre')) == 'decision' %} <span class="badge">décision</span>{% endif %}</td>
               <td>{% if fiche %}{{ fiche.organisation }}{% elif cat %}{{ cat.nom }}{% else %}Toutes catégories{% endif %}</td>
               <td><span class="badge {% if m.statut == 'valide' %}ok{% else %}alerte{% endif %}">{{ 'Validé' if m.statut == 'valide' else 'À valider' }}</span></td>
               <td class="actions-cellule">

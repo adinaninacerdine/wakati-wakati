@@ -15,10 +15,12 @@ WORKDIR /app
 # Dépendances système : ghostscript sert à alléger les PDF volumineux
 # avant envoi en signature, la liaison depuis les Comores étant limitée.
 # Module Courrier : tesseract + poppler lisent les courriers scannés (OCR),
-# Carlito (métriques de Calibri) sert aux PDF à en-tête WAKATI.
+# Liberation (métriques de Times New Roman et d'Arial) reproduit les
+# modèles officiels Huri Money ; Carlito (Calibri) reste disponible.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ghostscript tzdata curl \
         tesseract-ocr tesseract-ocr-fra poppler-utils fonts-crosextra-carlito \
+        fonts-liberation \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && rm -rf /var/lib/apt/lists/*
 

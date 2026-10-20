@@ -14,6 +14,33 @@ existant, puis s'archive en courrier sortant (CSOR) relié au courrier d'origine
 | IA | Autorisée ; fournisseur et catégories paramétrables | Paramètres, Banque › Catégories |
 | Zoho Sign | Plus tard : le circuit de visa assure validation et signature manuscrite | — |
 
+## Papier à en-tête et modèles officiels
+
+Tous les PDF reproduisent les modèles transmis par la Direction : logo WAKATI
+à gauche, logo Huri Money à droite, grand W en filigrane, icône et adresse en
+pied de page (images dans `entete/`). Deux mises en page :
+
+- **Lettre** (`Modele_Standard_Lettre_Huri_Money.docx`) : Times, fonction de
+  l'émetteur, « Moroni, le … », « À l'attention de », Réf. N°2026-014/DG/HM,
+  Objet, corps, signature à droite. Tous les modèles de réponse l'utilisent.
+- **Décision** (`Modele_Decision_Vierge.docx`) : Arial, cartouche, « Le Directeur
+  Général, », visas, bandeau DÉCIDE, articles, tableau, copies. Nature
+  « Décision du Directeur Général », type GED `DEC`, sans destinataire.
+
+Syntaxe d'un modèle de décision (une ligne par élément) : `Vu …`, `DÉCIDE`,
+`Article 1 · Titre`, `- puce`, `| a | b | c |` (la première ligne du tableau
+donne les en-têtes).
+
+Formats de référence et pied de page : écran Paramètres. Le nom de fichier
+archivé reste au format HM26.
+
+Dossier WorkDrive « Décision » dans chaque service :
+
+```bash
+python setup_folders.py            # aperçu
+python setup_folders.py --confirm  # crée les dossiers manquants, garde les autres
+```
+
 ## Parcours
 
 1. **Dépôt** d'un courrier reçu (écran Courriers, « Reçu — visa du DG ») avec
@@ -48,7 +75,7 @@ Statuts : Brouillon → À valider → En signature → Signé → Archivé.
 
 ```bash
 pip install -r requirements.txt          # ajoute fpdf2
-sudo apt install tesseract-ocr tesseract-ocr-fra poppler-utils fonts-crosextra-carlito
+sudo apt install tesseract-ocr tesseract-ocr-fra poppler-utils fonts-liberation
 ```
 
 Clé Groq : écran **Paramètres**, ou `IA_API_KEY = "gsk_..."` dans

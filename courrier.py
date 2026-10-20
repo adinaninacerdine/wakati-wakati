@@ -28,6 +28,12 @@ CE QUE LE MODULE STOCKE (dossier courrier/, hors Git)
   entrants.json        suivi des courriers entrants : échéance, statut
   parametres.json      signataires, IA, délais
   secret_ia.json       clé d'API saisie depuis l'écran (chmod 600)
+
+PAPIER À EN-TÊTE
+----------------
+Les PDF reproduisent les modèles officiels de la Direction (lettre standard
+et décision du DG) : logos WAKATI et Huri Money, filigrane, pied de page.
+Images dans entete/ (versionnées avec l'application).
   textes/              texte extrait (ou OCR) des courriers entrants
   projets/             PDF générés
 
@@ -108,6 +114,12 @@ NATURES = {
     "REL": "Relance",
     "RDV": "Proposition de rendez-vous",
     "LIBRE": "Courrier libre",
+    "DEC": "Décision du Directeur Général",
+}
+
+MISES_EN_PAGE = {
+    "lettre": "Lettre (modèle standard Huri Money)",
+    "decision": "Décision (Vu… / DÉCIDE / articles)",
 }
 
 STATUTS = {
@@ -335,12 +347,62 @@ MODELES_DEFAUT = [
      "{{formule_politesse}}"),
 ]
 
+# Modèles officiels transmis par la Direction Générale (octobre 2026).
+# Installés une fois, validés d'office : ils viennent de la Direction.
+MODELE_LETTRE_STANDARD = (
+    "{{formule_appel}},\n\n"
+    "{{paragraphe_central}}\n\n"
+    "Nous restons à votre entière disposition pour toute information "
+    "complémentaire et vous prions d'agréer, {{formule_appel}}, l'expression "
+    "de nos salutations distinguées.")
+
+MODELE_DECISION = """Vu la Constitution de l'Union des Comores du 23 décembre 2001, révisée par la loi référendaire du 30 juillet 2018 ;
+Vu le décret n°07-151/PR du 03 septembre 2007, portant fixation de certaines modalités de gestion et d'administration des sociétés à capitaux publics et établissements publics à caractère industriel et commercial, modifié par le décret n°11-155/PR du 28 juillet 2011 ;
+Vu le décret n°20-156/PR du 07 décembre 2020, portant mise en place du statut de la Société Anonyme « Huri Money » ;
+Vu le décret n°24-186/PR du 13 août 2024, portant nomination du Directeur Général de la Société Anonyme Huri Money ;
+Vu la nécessité du service ;
+
+DÉCIDE
+
+Article 1 · Création et composition
+[à compléter : nature de l'organe ou de la mesure créée, et son rattachement.] Le Comité est composé des membres suivants :
+| Nom | Matricule | Fonction / rôle dans le comité |
+| [à compléter : nom] | [à compléter : matricule] | [à compléter : fonction] |
+| [à compléter : nom] | [à compléter : matricule] | [à compléter : fonction] |
+
+Article 2 · Missions
+[à compléter : phrase d'introduction des missions.]
+- [à compléter : mission 1] ;
+- [à compléter : mission 2].
+
+Article 3 · Fonctionnement
+[à compléter : fréquence des réunions, quorum, modalités de compte-rendu.]
+
+Article 4 · Entrée en vigueur
+La présente décision prend effet à compter de sa date de signature. Elle sera notifiée aux membres concernés, communiquée et publiée partout où besoin sera."""
+
+MODELES_OFFICIELS = [
+    {"id": "m-libre-lettre-standard-hm", "nom": "Lettre standard Huri Money",
+     "nature": "LIBRE", "mise_en_page": "lettre", "corps": MODELE_LETTRE_STANDARD},
+    {"id": "m-dec-decision-dg", "nom": "Décision du Directeur Général",
+     "nature": "DEC", "mise_en_page": "decision", "corps": MODELE_DECISION},
+]
+
+VERSION_BANQUE = 2
+
 PARAMETRES_DEFAUT = {
     "signataires": SIGNATAIRES_DEFAUT,
     "service_defaut": "DGA",
     "delai_defaut_h": 48,
     "delai_urgent_defaut_h": 24,
     "relance_intervalle_h": 24,
+    # Références imprimées, au format des modèles Huri Money.
+    # Variables : {annee} {numero} {signataire} {service}
+    "format_reference": "N°{annee}-{numero}/{signataire}/HM",
+    "format_reference_decision": "{annee}-{numero}/{signataire}/H.M",
+    "pied_de_page": ("Huri Money S.A. — Rond-point Ambassadeur, B.P. 222, Moroni, "
+                     "Union des Comores — Tél. : +269 773 14 75 — contact@wakati.km"),
+    "version_banque": 0,
     "ia": {
         "actif": True,
         "fournisseur": "groq",
@@ -443,6 +505,36 @@ def assurer_banque():
 
         if not F_PARAMETRES.exists():
             _ecrire(F_PARAMETRES, PARAMETRES_DEFAUT)
+
+        _migrer_banque()
+
+
+def _migrer_banque():
+    """Installe, une seule fois, les modèles ajoutés après la création de la
+    banque (modèles officiels de la Direction). Un modèle supprimé ensuite par
+    la responsable GED n'est jamais réinstallé."""
+    p = _lire(F_PARAMETRES, PARAMETRES_DEFAUT)
+    if int(p.get("version_banque", 0)) >= VERSION_BANQUE:
+        return
+    liste = _lire(F_MODELES, [])
+    presents = {m.get("id") for m in liste}
+    for officiel in MODELES_OFFICIELS:
+        if officiel["id"] in presents:
+            continue
+        liste.append({
+            **officiel,
+            "categorie": "*",
+            "correspondant_id": "",
+            "statut": "valide",
+            "valide_par": "Direction Générale (modèle officiel)",
+            "valide_le": _maintenant(),
+            "version": 1,
+            "cree_le": _maintenant(),
+            "maj_le": _maintenant(),
+        })
+    _ecrire(F_MODELES, liste)
+    p["version_banque"] = VERSION_BANQUE
+    _ecrire(F_PARAMETRES, p)
 
 
 def _fiche_vide():
@@ -870,6 +962,7 @@ def infos_a_classer(fichier_local):
             infos["numero"] = rep.get("numero", "")
             infos["date_doc"] = rep.get("date_courrier", "")
             infos["service"] = rep.get("service", "")
+            infos["type_doc"] = type_document(rep)
     return infos
 
 
@@ -1138,6 +1231,11 @@ def synchroniser():
     return reps
 
 
+def type_document(rep):
+    """Type GED du courrier produit : DEC pour une décision, CSOR sinon."""
+    return "DEC" if mise_en_page(rep) == "decision" else "CSOR"
+
+
 def _reserver_numero(rep):
     """Numéro d'ordre CSOR : suite du registre, en tenant compte des numéros
     déjà réservés par d'autres projets. La responsable GED peut toujours le
@@ -1145,16 +1243,18 @@ def _reserver_numero(rep):
     if rep.get("numero"):
         return rep["numero"]
     service = rep.get("service", "DGA")
+    type_doc = type_document(rep)
     dernier = 0
     fn = _CTX.get("dernier_numero")
     if fn:
         try:
-            dernier = fn(service, "CSOR") or 0
+            dernier = fn(service, type_doc) or 0
         except Exception:  # noqa: BLE001
             dernier = 0
     annee = datetime.now().strftime("%Y")
     for autre in reponses().values():
         if (autre.get("service") == service and autre.get("numero")
+                and type_document(autre) == type_doc
                 and str(autre.get("date_courrier", "")).startswith(annee)):
             try:
                 dernier = max(dernier, int(autre["numero"]))
@@ -1166,34 +1266,69 @@ def _reserver_numero(rep):
 
 def _ref_sortant(rep):
     date = (rep.get("date_courrier") or datetime.now().date().isoformat())
-    return (f"HM26-{rep.get('service', 'DGA')}-CSOR_"
+    return (f"HM26-{rep.get('service', 'DGA')}-{type_document(rep)}_"
             f"{date.replace('-', '')}_{rep.get('numero', '000')}")
 
 
 # ---------------------------------------------------------------------------
-# PDF à en-tête WAKATI
+# PDF sur papier à en-tête Huri Money
 # ---------------------------------------------------------------------------
-NAVY = (3, 34, 76)
-ROUGE = (230, 14, 6)
-GRIS = (91, 107, 127)
+# Reproduit les modèles officiels transmis par la Direction (octobre 2026) :
+#   - Modele_Standard_Lettre_Huri_Money.docx  -> mise en page « lettre »
+#   - Modele_Decision_Vierge.docx             -> mise en page « decision »
+# Papier commun : logo WAKATI en haut à gauche, logo Huri Money en haut à
+# droite, grand W WAKATI en filigrane au centre, pied de page avec l'icône
+# Huri Money et l'adresse. Les images sont dans le dossier entete/.
+#
+# Mesures relevées dans les fichiers Word (A4, marges 21,2 mm à gauche et à
+# droite, 24,7 mm en haut et en bas, en-tête à 12,5 mm du bord).
+DOSSIER_ENTETE = RACINE / "entete"
 
-_POLICES = [
-    # (regulier, gras) — Carlito a les métriques de Calibri.
-    ("/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf",
-     "/usr/share/fonts/truetype/crosextra/Carlito-Bold.ttf"),
-    (r"C:\Windows\Fonts\calibri.ttf", r"C:\Windows\Fonts\calibrib.ttf"),
-    ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
-    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-]
+NAVY = (11, 31, 58)        # #0B1F3A — titres de la décision
+ROUGE = (140, 22, 33)      # #8C1621 — numéros d'article
+GRIS = (102, 107, 114)     # #666B72 — mentions et pied de page
+TEXTE = (34, 34, 34)       # #222222
+FILET = (200, 203, 208)
+
+MARGE_G = 21.2
+MARGE_D = 21.2
+LARGEUR_UTILE = 210 - MARGE_G - MARGE_D
+
+# (regulier, gras, italique, gras italique) par famille — Liberation a les métriques de
+# Times New Roman et d'Arial, les polices des modèles Word.
+_POLICES = {
+    "serif": [
+        ("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf"),
+        (r"C:\Windows\Fonts\times.ttf", r"C:\Windows\Fonts\timesbd.ttf",
+         r"C:\Windows\Fonts\timesi.ttf", r"C:\Windows\Fonts\timesbi.ttf"),
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf"),
+    ],
+    "sans": [
+        ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+         "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf"),
+        (r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\arialbd.ttf",
+         r"C:\Windows\Fonts\ariali.ttf", r"C:\Windows\Fonts\arialbi.ttf"),
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf"),
+    ],
+}
 
 
-def _police():
-    for reg, gras in _POLICES:
-        if Path(reg).exists() and Path(gras).exists():
-            return reg, gras
-    return None, None
+def _police(famille):
+    for jeu in _POLICES[famille]:
+        if all(Path(f).exists() for f in jeu):
+            return jeu
+    return None
 
 
 def _latin1(texte):
@@ -1201,152 +1336,423 @@ def _latin1(texte):
     latin-1."""
     remplacements = {"’": "'", "‘": "'", "“": '"', "”": '"', "–": "-",
                      "—": "-", "…": "...", "œ": "oe", "Œ": "OE", "€": "EUR",
-                     "\u00a0": " ", "\u202f": " "}
+                     "·": "-", "\u00a0": " ", "\u202f": " "}
     for a, b in remplacements.items():
         texte = texte.replace(a, b)
     return texte.encode("latin-1", "replace").decode("latin-1")
 
 
-def generer_pdf(rep, chemin, filigrane=False):
+def _sans_article(fonction):
+    """« Le Directeur Général » -> « Directeur Général » (sous la signature)."""
+    return re.sub(r"^(le|la|les|l')\s*", "", (fonction or "").strip(),
+                  flags=re.I).strip()
+
+
+def mise_en_page(rep):
+    """« decision » pour une décision du DG, « lettre » sinon."""
+    m = modele(rep.get("modele_id", "")) or {}
+    if m.get("mise_en_page"):
+        return m["mise_en_page"]
+    return "decision" if rep.get("nature") == "DEC" else "lettre"
+
+
+def reference_imprimee(rep):
+    """Référence telle qu'elle figure sur le courrier, au format Huri Money
+    (paramétrable). Exemple : N°2026-014/DG/HM."""
+    if not rep.get("numero"):
+        return ""
+    p = parametres()
+    cle = "format_reference_decision" if mise_en_page(rep) == "decision" \
+        else "format_reference"
+    gabarit = p.get(cle) or PARAMETRES_DEFAUT[cle]
+    date = rep.get("date_courrier") or datetime.now().date().isoformat()
+    try:
+        return gabarit.format(annee=date[:4], numero=rep.get("numero", ""),
+                              signataire=rep.get("signataire", "DG"),
+                              service=rep.get("service", ""))
+    except (KeyError, IndexError, ValueError):
+        return f"N°{date[:4]}-{rep.get('numero', '')}/{rep.get('signataire', 'DG')}/HM"
+
+
+def _papier(famille_police, filigrane_projet):
+    """Classe FPDF portant le papier à en-tête commun aux deux mises en page."""
     from fpdf import FPDF  # noqa: PLC0415
 
-    fiche = correspondant(rep.get("correspondant_id")) or {}
-    sig = signataire(rep.get("signataire", "")) or {}
-    reg, gras = _police()
-    famille = "Lettre" if reg else "Helvetica"
-    t = (lambda s: s or "") if reg else (lambda s: _latin1(s or ""))
+    polices = _police(famille_police)
+    nom_police = "Corps" if polices else ("Times" if famille_police == "serif"
+                                          else "Helvetica")
+    t = (lambda s: s or "") if polices else (lambda s: _latin1(s or ""))
+    pied = parametres().get("pied_de_page") or PARAMETRES_DEFAUT["pied_de_page"]
 
-    class Lettre(FPDF):
+    def image(nom):
+        chemin = DOSSIER_ENTETE / nom
+        return str(chemin) if chemin.exists() else None
+
+    class Papier(FPDF):
+        police = nom_police
+
         def header(self):
-            self.set_fill_color(*NAVY)
-            self.rect(0, 0, 210, 26, "F")
-            self.set_xy(18, 7)
-            self.set_text_color(255, 255, 255)
-            self.set_font(famille, "", 20)
-            self.cell(0, 8, "W A K A T I")
-            self.set_xy(18, 15.5)
-            self.set_text_color(*ROUGE)
-            self.set_font(famille, "B", 8.5)
-            self.cell(0, 5, "NDUWO UWO")
-            self.set_xy(110, 9)
-            self.set_text_color(255, 255, 255)
-            self.set_font(famille, "", 9)
-            self.multi_cell(82, 4.4, t("Huri Money SA\nWAKATI Mobile Money"),
-                            align="R")
-            self.set_text_color(0, 0, 0)
-            if filigrane:
-                with self.local_context(fill_opacity=0.08, text_color=(3, 34, 76)):
-                    self.set_font(famille, "B", 90)
-                    with self.rotation(35, 105, 160):
-                        self.text(38, 190, "PROJET")
-            self.set_y(36)
+            # Filigrane WAKATI centré sur la page, derrière le texte. L'image
+            # porte déjà sa transparence (comme dans le modèle Word).
+            fil = image("filigrane.png")
+            if fil:
+                self.image(fil, x=(210 - 85.5) / 2, y=(297 - 85.5) / 2, w=85.5)
+            if filigrane_projet:
+                with self.local_context(fill_opacity=0.10, text_color=(140, 22, 33)):
+                    self.set_font(nom_police, "B", 80)
+                    with self.rotation(35, 105, 150):
+                        self.text(45, 180, "PROJET")
+            logo = image("logo_wakati.png")
+            if logo:
+                self.image(logo, x=MARGE_G + 2.8, y=15.1, w=11.1)
+            hm = image("logo_hurimoney.png")
+            if hm:
+                self.image(hm, x=210 - MARGE_D - 45.5, y=17.8, w=45.5)
+            self.set_text_color(*TEXTE)
+            self.set_y(34)
 
         def footer(self):
-            self.set_y(-16)
-            self.set_draw_color(*NAVY)
-            self.line(18, self.get_y(), 192, self.get_y())
-            self.set_y(-14)
-            self.set_font(famille, "", 8)
+            icone = image("icone_hurimoney.png")
+            if icone:
+                self.image(icone, x=(210 - 9.5) / 2, y=297 - 23.5, w=9.5)
+            self.set_y(-12.5)
+            self.set_font(nom_police, "", 7.5 if famille_police == "sans" else 9)
             self.set_text_color(*GRIS)
-            self.cell(0, 5, t("Huri Money SA — WAKATI Mobile Money | Union des Comores"),
-                      align="C")
-            self.set_y(-14)
-            self.cell(0, 5, f"{self.page_no()}/{{nb}}", align="R")
+            self.cell(0, 4, t(pied), align="C")
+            self.set_text_color(*TEXTE)
 
-    pdf = Lettre(format="A4")
-    if reg:
-        pdf.add_font("Lettre", "", reg)
-        pdf.add_font("Lettre", "B", gras)
-    pdf.set_margins(22, 34, 20)
-    pdf.set_auto_page_break(True, margin=24)
-    pdf.alias_nb_pages()
+    pdf = Papier(format="A4")
+    if polices:
+        pdf.add_font("Corps", "", polices[0])
+        pdf.add_font("Corps", "B", polices[1])
+        pdf.add_font("Corps", "I", polices[2])
+        pdf.add_font("Corps", "BI", polices[3])
+    pdf.set_margins(MARGE_G, 34, MARGE_D)
+    pdf.set_auto_page_break(True, margin=30)
+    return pdf, t
+
+
+def generer_pdf(rep, chemin, filigrane=False):
+    """Génère le courrier sur papier à en-tête Huri Money."""
+    if mise_en_page(rep) == "decision":
+        pdf = _pdf_decision(rep, filigrane)
+    else:
+        pdf = _pdf_lettre(rep, filigrane)
+    Path(chemin).parent.mkdir(parents=True, exist_ok=True)
+    pdf.output(str(chemin))
+    return chemin
+
+
+def _paragraphes(texte):
+    return [p.strip() for p in re.split(r"\n\s*\n", (texte or "").strip()) if p.strip()]
+
+
+def _pdf_lettre(rep, filigrane):
+    """Modèle standard de lettre : Times 11, blocs alignés à gauche,
+    signature à droite."""
+    pdf, t = _papier("serif", filigrane)
     pdf.add_page()
+    f = pdf.police
+    fiche = correspondant(rep.get("correspondant_id")) or {}
+    sig = signataire(rep.get("signataire", "")) or {}
+    L = 5.2  # interligne Times 11
 
-    # --- Lieu et date, à droite
-    pdf.set_font(famille, "", 11)
+    # Fonction de l'émetteur
+    pdf.set_font(f, "B", 11)
+    pdf.multi_cell(0, L, t(sig.get("fonction") or "[à compléter : signataire]"),
+                   new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(7)
+
+    # Lieu et date
+    pdf.set_font(f, "", 11)
     date_c = rep.get("date_courrier") or datetime.now().date().isoformat()
-    pdf.cell(0, 6, t(f"Moroni, le {date_longue(date_c)}"), align="R",
-             new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(4)
+    pdf.cell(0, L, t(f"Moroni, le {date_longue(date_c)}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(7)
 
-    # --- Références (gauche) et destinataire (droite), sur la même hauteur
-    y0 = pdf.get_y()
-    pdf.set_font(famille, "B", 10)
-    pdf.set_text_color(*NAVY)
-    ref_s = rep.get("ref_sortant") or "Réf. attribuée à la validation"
-    pdf.multi_cell(80, 5, t(f"N/Réf. : {ref_s}"), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font(famille, "", 10)
-    pdf.set_text_color(0, 0, 0)
+    # Destinataire
+    nom = fiche.get("civilite") or fiche.get("nom") or ""
+    lignes = []
+    if fiche.get("fonction") and not fiche.get("civilite"):
+        lignes.append(fiche["fonction"])
+    org = fiche.get("organisation") or rep.get("correspondant_libre", "")
+    if org and org != nom:
+        lignes.append(org)
+    lignes += [x for x in (fiche.get("adresse") or "").splitlines() if x.strip()]
+    if not nom and lignes:
+        nom, lignes = lignes[0], lignes[1:]
+    pdf.cell(0, L, t("À l'attention de"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font(f, "B", 11)
+    pdf.multi_cell(0, L, t(nom or "[à compléter : destinataire]"),
+                   new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font(f, "", 11)
+    for ligne in lignes:
+        pdf.multi_cell(0, L, t(ligne), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
+
+    # Références
+    ref = reference_imprimee(rep) or "N°…… (attribué à la validation)"
+    pdf.set_font(f, "U", 11)
+    pdf.write(L, t("Réf. :"))
+    pdf.set_font(f, "", 11)
+    pdf.write(L, t(f" {ref}"))
+    pdf.ln(L)
     if rep.get("ref_entrant"):
         vref = rep["ref_entrant"]
         if rep.get("date_entrant"):
             vref += f" du {date_courte(rep['date_entrant'])}"
-        pdf.multi_cell(80, 5, t(f"V/Réf. : {vref}"), new_x="LMARGIN", new_y="NEXT")
-    y_refs = pdf.get_y()
-
-    lignes_dest = []
-    if fiche.get("civilite"):
-        lignes_dest.append(fiche["civilite"])
-    elif fiche.get("nom"):
-        lignes_dest.append(fiche["nom"])
-    if fiche.get("fonction") and not fiche.get("civilite"):
-        lignes_dest.append(fiche["fonction"])
-    org = fiche.get("organisation") or rep.get("correspondant_libre", "")
-    if org and org not in lignes_dest:
-        lignes_dest.append(org)
-    lignes_dest += [l for l in (fiche.get("adresse") or "").splitlines() if l.strip()]
-    if not lignes_dest:
-        lignes_dest = [A_COMPLETER]
-
-    pdf.set_xy(112, y0)
-    pdf.set_font(famille, "B", 11)
-    pdf.multi_cell(78, 5.4, t("\n".join(lignes_dest)), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_y(max(y_refs, pdf.get_y()) + 8)
-
-    # --- Objet
-    pdf.set_font(famille, "B", 11)
-    objet = rep.get("objet") or A_COMPLETER
-    pdf.multi_cell(0, 5.6, t(f"Objet : {objet}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font(f, "U", 11)
+        pdf.write(L, t("V/Réf. :"))
+        pdf.set_font(f, "", 11)
+        pdf.write(L, t(f" {vref}"))
+        pdf.ln(L)
     pdf.ln(5)
 
-    # --- Corps
-    pdf.set_font(famille, "", 11)
-    for paragraphe in re.split(r"\n\s*\n", (rep.get("corps") or "").strip()):
-        paragraphe = paragraphe.strip()
-        if not paragraphe:
-            continue
-        pdf.multi_cell(0, 5.6, t(paragraphe), align="J",
-                       new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(3)
+    # Objet
+    pdf.set_font(f, "BU", 11)
+    pdf.write(L, t("Objet :"))
+    pdf.set_font(f, "B", 11)
+    pdf.write(L, t(f" {rep.get('objet') or '[à compléter : objet]'}"))
+    pdf.ln(L)
+    pdf.ln(5)
 
-    # --- Signature, à droite
-    pdf.ln(6)
-    if pdf.get_y() > 240:
+    # Corps
+    pdf.set_font(f, "", 11)
+    for paragraphe in _paragraphes(rep.get("corps")):
+        pdf.multi_cell(0, L, t(paragraphe), align="J", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(5)
+
+    # Signature : nom en gras, espace de signature, fonction
+    if pdf.get_y() > 220:
         pdf.add_page()
-    pdf.set_x(112)
-    pdf.set_font(famille, "B", 11)
-    pdf.multi_cell(78, 5.6, t(sig.get("fonction") or "[à compléter : signataire]"),
-                   align="C", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(22)
-    pdf.set_x(112)
-    pdf.set_font(famille, "", 11)
-    pdf.multi_cell(78, 5.6, t(sig.get("nom") or ""), align="C",
-                   new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
+    pdf.set_font(f, "B", 11)
+    pdf.cell(0, L, t(sig.get("nom") or ""), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(28)
+    pdf.set_font(f, "", 11)
+    pdf.cell(0, L, t(_sans_article(sig.get("fonction")) or ""), align="R",
+             new_x="LMARGIN", new_y="NEXT")
 
-    # --- Copies
-    copies = [c.strip() for c in re.split(r"[;\n]", rep.get("copies") or "")
-              if c.strip()]
+    # Copies
+    copies = [c.strip() for c in re.split(r"[;\n]", rep.get("copies") or "") if c.strip()]
     if copies:
-        pdf.ln(6)
-        pdf.set_font(famille, "B", 9.5)
+        pdf.ln(8)
+        pdf.set_font(f, "U", 10)
         pdf.cell(0, 5, t("Copie :"), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font(famille, "", 9.5)
+        pdf.set_font(f, "", 10)
         for c in copies:
             pdf.cell(0, 4.8, t(f"- {c}"), new_x="LMARGIN", new_y="NEXT")
+    return pdf
 
-    Path(chemin).parent.mkdir(parents=True, exist_ok=True)
-    pdf.output(str(chemin))
-    return chemin
+
+_MOTIF_ARTICLE = re.compile(r"^\s*article\s+(\S+)\s*[·:.\-–—]?\s*(.*)$", re.I)
+_MOTIF_DECIDE = re.compile(r"^\s*d\s*[ée]\s*c\s*i\s*d\s*e\s*:?\s*$", re.I)
+
+
+def _blocs_decision(corps):
+    """Découpe le corps d'une décision en blocs typés.
+
+    Conventions de saisie (dans la Banque de courriers) :
+      Vu …                  une ligne par visa
+      DÉCIDE                le bandeau
+      Article 1 · Titre     un article
+      - texte               une puce
+      | a | b | c |         une ligne de tableau (la première = en-têtes)
+      autre ligne           un paragraphe
+    """
+    blocs, tableau = [], None
+    for ligne in (corps or "").splitlines():
+        brut = ligne.strip()
+        if brut.startswith("|"):
+            cellules = [c.strip() for c in brut.strip("|").split("|")]
+            if all(re.fullmatch(r"-{2,}", c) for c in cellules if c):
+                continue  # ligne de séparation façon Markdown
+            if tableau is None:
+                tableau = []
+                blocs.append(("tableau", tableau))
+            tableau.append(cellules)
+            continue
+        tableau = None
+        if not brut:
+            continue
+        if _MOTIF_DECIDE.match(brut):
+            blocs.append(("decide", ""))
+        elif re.match(r"^vu\b", brut, re.I):
+            blocs.append(("vu", re.sub(r"^vu\s*", "", brut, flags=re.I)))
+        elif _MOTIF_ARTICLE.match(brut):
+            num, titre = _MOTIF_ARTICLE.match(brut).groups()
+            blocs.append(("article", (num, titre)))
+        elif brut.startswith(("- ", "• ", "* ")):
+            blocs.append(("puce", brut[2:].strip()))
+        else:
+            blocs.append(("texte", brut))
+    return blocs
+
+
+def _pdf_decision(rep, filigrane):
+    """Modèle de décision du Directeur Général : Arial, cartouche de titre,
+    visas, bandeau DÉCIDE, articles numérotés."""
+    pdf, t = _papier("sans", filigrane)
+    pdf.add_page()
+    f = pdf.police
+    sig = signataire(rep.get("signataire", "")) or {}
+    fonction = _sans_article(sig.get("fonction")) or "Directeur Général"
+
+    # Filet sous les logos
+    pdf.set_draw_color(*NAVY)
+    pdf.set_line_width(0.5)
+    pdf.line(MARGE_G, 33, 210 - MARGE_D, 33)
+    pdf.set_y(38)
+
+    # Cartouche : nature, objet, référence, date. Le fond est tracé d'abord,
+    # à la hauteur mesurée du titre, pour rester sous le texte.
+    y0 = pdf.get_y()
+    pdf.set_font(f, "B", 14)
+    nb_lignes = len(pdf.multi_cell(LARGEUR_UTILE - 10, 7,
+                                   t(rep.get("objet") or "[à compléter : objet]"),
+                                   dry_run=True, output="LINES"))
+    hauteur = 5 + 7 * nb_lignes + 1 + 2 * 4.5 + 6
+    pdf.set_fill_color(246, 247, 249)
+    pdf.set_draw_color(*FILET)
+    pdf.set_line_width(0.2)
+    pdf.rect(MARGE_G, y0 - 3, LARGEUR_UTILE, hauteur, "DF")
+    pdf.set_y(y0)
+    pdf.set_x(MARGE_G + 5)
+    pdf.set_font(f, "", 8.5)
+    pdf.set_text_color(*GRIS)
+    pdf.cell(0, 5, t(f"Décision du {fonction}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(MARGE_G + 5)
+    pdf.set_font(f, "B", 14)
+    pdf.set_text_color(*NAVY)
+    pdf.multi_cell(LARGEUR_UTILE - 10, 7, t(rep.get("objet") or "[à compléter : objet]"),
+                   new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
+    for libelle, valeur in (("Référence", reference_imprimee(rep) or "attribuée à la validation"),
+                            ("Date", date_longue(rep.get("date_courrier")
+                                                 or datetime.now().date().isoformat()))):
+        pdf.set_x(MARGE_G + 5)
+        pdf.set_font(f, "", 8.5)
+        pdf.set_text_color(*GRIS)
+        pdf.write(4.5, t(f"{libelle}  "))
+        pdf.set_font(f, "B", 8.5)
+        pdf.set_text_color(*NAVY)
+        pdf.write(4.5, t(valeur))
+        pdf.ln(4.5)
+    pdf.set_y(y0 - 3 + hauteur + 6)
+
+    # « Le Directeur Général, »
+    pdf.set_font(f, "B", 11.5)
+    pdf.set_text_color(*NAVY)
+    titre = (sig.get("fonction") or "").strip()
+    if not re.match(r"(?i)^(le|la|l')\b", titre):
+        titre = f"Le {fonction}"
+    pdf.cell(0, 6, t(f"{titre},"), align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+    pdf.set_text_color(*TEXTE)
+
+    retrait = 8
+    for genre, contenu in _blocs_decision(rep.get("corps")):
+        if genre == "vu":
+            pdf.set_x(MARGE_G + retrait)
+            pdf.set_font(f, "BI", 9.5)
+            pdf.set_text_color(*NAVY)
+            pdf.write(4.8, "Vu ")
+            pdf.set_font(f, "", 9.5)
+            pdf.set_text_color(*TEXTE)
+            pdf.set_left_margin(MARGE_G + retrait)
+            pdf.write(4.8, t(contenu))
+            pdf.set_left_margin(MARGE_G)
+            pdf.ln(4.8)
+            pdf.ln(1.8)
+        elif genre == "decide":
+            pdf.ln(4)
+            pdf.set_fill_color(*NAVY)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font(f, "B", 11.5)
+            pdf.cell(0, 9, t("D É C I D E"), align="C", fill=True,
+                     new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(*TEXTE)
+            pdf.ln(3)
+        elif genre == "article":
+            num, titre = contenu
+            if pdf.get_y() > 250:
+                pdf.add_page()
+            pdf.ln(3.5)
+            pdf.set_font(f, "B", 10)
+            pdf.set_text_color(*ROUGE)
+            pdf.write(5.5, t(f"Article {num}"))
+            pdf.set_text_color(*GRIS)
+            pdf.write(5.5, "   ·   ")
+            pdf.set_text_color(*NAVY)
+            pdf.write(5.5, t(titre))
+            pdf.ln(6)
+            pdf.set_draw_color(*FILET)
+            pdf.set_line_width(0.2)
+            pdf.line(MARGE_G, pdf.get_y(), 210 - MARGE_D, pdf.get_y())
+            pdf.ln(1.5)
+            pdf.set_text_color(*TEXTE)
+        elif genre == "puce":
+            pdf.set_font(f, "", 9.5)
+            pdf.set_x(MARGE_G + 6)
+            pdf.cell(5, 4.8, t("•"))
+            pdf.multi_cell(LARGEUR_UTILE - 11, 4.8, t(contenu), align="J",
+                           new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(1.2)
+        elif genre == "tableau":
+            pdf.set_font(f, "", 9)
+            pdf.set_draw_color(*FILET)
+            # Le bandeau DÉCIDE laisse le remplissage en navy : sans cette
+            # remise à zéro, les lignes du tableau seraient navy sur navy.
+            pdf.set_fill_color(255, 255, 255)
+            pdf.set_text_color(*TEXTE)
+            nb = max(len(r) for r in contenu)
+            lignes = [r + [""] * (nb - len(r)) for r in contenu]
+            with pdf.table(
+                    width=LARGEUR_UTILE, line_height=5.5, text_align="LEFT",
+                    headings_style=_style_entete_tableau(f),
+                    borders_layout="HORIZONTAL_LINES",
+                    cell_fill_mode="NONE") as tab:
+                for r in lignes:
+                    ligne = tab.row()
+                    for c in r:
+                        ligne.cell(t(c))
+            pdf.ln(3)
+        else:
+            pdf.set_font(f, "", 9.5)
+            pdf.multi_cell(0, 4.8, t(contenu), align="J", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(2.5)
+
+    # Copies
+    copies = [c.strip() for c in re.split(r"[;\n]", rep.get("copies") or "") if c.strip()]
+    if pdf.get_y() > 225:
+        pdf.add_page()
+    pdf.ln(8)
+    pdf.set_draw_color(*FILET)
+    pdf.line(MARGE_G, pdf.get_y(), 210 - MARGE_D, pdf.get_y())
+    pdf.ln(3)
+    if copies:
+        pdf.set_font(f, "I", 8)
+        pdf.set_text_color(*GRIS)
+        pdf.multi_cell(0, 4.2, t("Copies : " + "  —  ".join(copies)),
+                       new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(5)
+
+    # Signature
+    pdf.set_font(f, "B", 10.5)
+    pdf.set_text_color(*NAVY)
+    pdf.cell(0, 5.5, t(sig.get("nom") or ""), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(26)
+    pdf.set_font(f, "I", 8.5)
+    pdf.set_text_color(*GRIS)
+    pdf.cell(0, 5, t(f"{fonction}, Huri Money S.A."), align="R",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(*TEXTE)
+    return pdf
+
+
+def _style_entete_tableau(police):
+    from fpdf.fonts import FontFace  # noqa: PLC0415
+    return FontFace(family=police, emphasis="BOLD", color=(255, 255, 255),
+                    fill_color=NAVY)
 
 
 # ---------------------------------------------------------------------------
@@ -1714,6 +2120,7 @@ def _reponse_affichee(r):
 def _contexte_commun():
     return {
         "natures": NATURES,
+        "mises_en_page": MISES_EN_PAGE,
         "statuts": STATUTS,
         "urgences": URGENCES,
         "categories": categories(),
@@ -1793,7 +2200,8 @@ def preparer():
             "correspondant_id", "correspondant_libre", "categorie", "nature",
             "modele_id", "service", "objet", "ref_entrant", "date_entrant",
             "date_reception", "objet_entrant", "consignes", "signataire", "copies")}
-        if not champs["correspondant_id"] and not champs["correspondant_libre"].strip():
+        if (champs["nature"] != "DEC" and not champs["correspondant_id"]
+                and not champs["correspondant_libre"].strip()):
             flash("Choisissez un destinataire dans l'annuaire ou saisissez-le.", "error")
             return redirect(url_for("courrier.preparer", entrant=entrant_id))
         rep = creer_reponse(champs, entrant_id)
@@ -1834,6 +2242,7 @@ def edition(ref):
     return render_template(
         "courrier_edition.html", page="courrier",
         rep=_reponse_affichee(rep),
+        decision=mise_en_page(rep) == "decision",
         entrant=_entrant_affiche(entrant) if entrant else None,
         texte=texte_entrant(rep.get("entrant_id", "")) if entrant else "",
         annuaire=correspondants(),
@@ -1960,17 +2369,19 @@ def soumettre(ref):
         rep["date_courrier"] = datetime.now().date().isoformat()
         _reserver_numero(rep)
         rep["ref_sortant"] = _ref_sortant(rep)
+        rep["ref_imprimee"] = reference_imprimee(rep)
         chemin = DOSSIER_PROJETS / f"{ref}.pdf"
         generer_pdf(rep, chemin, filigrane=False)
 
         fiche = correspondant(rep.get("correspondant_id")) or {}
-        organisation = fiche.get("organisation") or rep.get("correspondant_libre", "")
+        organisation = (fiche.get("organisation") or rep.get("correspondant_libre", "")
+                        or ("Diffusion interne" if type_document(rep) == "DEC" else ""))
         premiere = not rep.get("visa_ref")
         try:
             if premiere:
                 rep["visa_ref"] = visa.deposer_pour_visa(chemin, {
                     "service": rep.get("service", "DGA"),
-                    "type_doc": "CSOR",
+                    "type_doc": type_document(rep),
                     "date_doc": rep["date_courrier"],
                     "objet": rep.get("objet", ""),
                     "sens": "sortant",
@@ -1993,7 +2404,7 @@ def soumettre(ref):
         rep["statut"] = "a_valider"
         rep.pop("motif_retour", None)
         _historiser(rep, "Soumis à validation" if premiere else "Resoumis à validation",
-                    rep["ref_sortant"])
+                    rep.get("ref_imprimee") or rep["ref_sortant"])
         _ecrire(F_REPONSES, reps)
 
     sig = signataire(rep.get("signataire", "")) or {}
@@ -2006,7 +2417,7 @@ def soumettre(ref):
         "Date": sig.get("fonction", rep.get("signataire", "")),
     })
     flash(f"Projet transmis pour validation ({sig.get('fonction') or rep.get('signataire')}). "
-          f"Référence : {rep['ref_sortant']}", "success")
+          f"Référence : {rep.get('ref_imprimee') or rep['ref_sortant']}", "success")
     return redirect(url_for("courrier.edition", ref=ref))
 
 
@@ -2143,6 +2554,8 @@ def sauver_modele():
             "nature": f.get("nature", "AR"),
             "categorie": f.get("categorie", "*") or "*",
             "correspondant_id": f.get("correspondant_id", ""),
+            "mise_en_page": f.get("mise_en_page") or (
+                "decision" if f.get("nature") == "DEC" else "lettre"),
             "corps": corps,
             "maj_le": _maintenant(),
         })
@@ -2301,6 +2714,10 @@ def ecran_parametres():
                 except (TypeError, ValueError):
                     pass
             p["service_defaut"] = f.get("service_defaut", p.get("service_defaut", "DGA"))
+            for champ in ("format_reference", "format_reference_decision", "pied_de_page"):
+                valeur = f.get(champ, "").strip()
+                if valeur:
+                    p[champ] = valeur
             sigs = []
             for i in range(int(f.get("nb_signataires", 0)) + 1):
                 code = f.get(f"sig_{i}_code", "").strip().upper()

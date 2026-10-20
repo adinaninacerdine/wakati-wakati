@@ -102,11 +102,20 @@
               </div>
 
               <div class="champ">
-                <label for="e_corps">Texte du courrier</label>
+                <label for="e_corps">{% if decision %}Texte de la décision{% else %}Texte du courrier{% endif %}</label>
                 <textarea id="e_corps" name="corps" class="corps-lettre" oninput="compterPC()">{{ rep.corps }}</textarea>
-                <div class="aide">En-tête WAKATI, références, destinataire, objet et
-                  signature sont ajoutés automatiquement. Les zones
+                {% if decision %}
+                <div class="aide">Décision : papier à en-tête, cartouche (objet, référence, date),
+                  « Le Directeur Général, » et signature sont ajoutés automatiquement.
+                  Une ligne par élément : <code>Vu …</code> pour chaque visa, <code>DÉCIDE</code>
+                  pour le bandeau, <code>Article 1 · Titre</code>, <code>- texte</code> pour une puce,
+                  <code>| a | b | c |</code> pour une ligne de tableau (la première ligne donne les en-têtes).
+                  Les zones <code>[à compléter : …]</code> doivent disparaître avant la soumission.</div>
+                {% else %}
+                <div class="aide">Papier à en-tête Huri Money, fonction de l'émetteur, date,
+                  destinataire, références, objet et signature sont ajoutés automatiquement. Les zones
                   <code>[à compléter : …]</code> doivent disparaître avant la soumission.</div>
+                {% endif %}
               </div>
 
               <div class="champ">
@@ -212,7 +221,8 @@
               <li><strong>{{ h.action }}</strong> — {{ h.le|date_courte }} — {{ h.par }}{% if h.detail %}<br>{{ h.detail }}{% endif %}</li>
               {% endfor %}
             </ul>
-            {% if rep.ref_sortant %}<p class="aide">Référence : {{ rep.ref_sortant }}</p>{% endif %}
+            {% if rep.ref_imprimee %}<p class="aide">Référence imprimée : {{ rep.ref_imprimee }}</p>{% endif %}
+            {% if rep.ref_sortant %}<p class="aide">Archivage GED : {{ rep.ref_sortant }}</p>{% endif %}
           </div>
         </section>
       </div>

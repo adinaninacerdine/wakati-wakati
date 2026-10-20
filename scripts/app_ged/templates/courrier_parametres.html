@@ -115,6 +115,27 @@
         </div>
       </section>
 
+      <!-- PAPIER À EN-TÊTE -->
+      <section class="bloc">
+        <h2>Papier à en-tête et références</h2>
+        <div class="corps">
+          <p class="aide" style="margin-top:0;">Les courriers reprennent les modèles officiels de la
+            Direction : logos WAKATI et Huri Money, filigrane, pied de page. Les images sont dans
+            le dossier <code>entete/</code> de l'application.</p>
+          <div class="champ"><label>Pied de page</label>
+            <input type="text" name="pied_de_page" value="{{ p.pied_de_page }}"></div>
+          <div class="rang">
+            <div class="champ"><label>Référence d'une lettre</label>
+              <input type="text" name="format_reference" value="{{ p.format_reference }}"></div>
+            <div class="champ"><label>Référence d'une décision</label>
+              <input type="text" name="format_reference_decision" value="{{ p.format_reference_decision }}"></div>
+          </div>
+          <p class="aide">Variables : <code>{annee}</code> <code>{numero}</code> <code>{signataire}</code>
+            <code>{service}</code>. Exemple : <code>N°{annee}-{numero}/{signataire}/HM</code> donne
+            N°2026-014/DG/HM. Le nom de fichier archivé dans la GED reste au format HM26.</p>
+        </div>
+      </section>
+
       <!-- DÉLAIS -->
       <section class="bloc">
         <h2>Délais et relances</h2>

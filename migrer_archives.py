@@ -51,6 +51,33 @@ TROIS PASSES. Les deux premieres n'ecrivent rien d'irreversible.
   ANNULATION DU RENOMMAGE
   ./venv/bin/python migrer_archives.py --annuler-renommage
 
+  MOTEUR DE RECHERCHE (sans upload ni registre)
+  ./venv/bin/python migrer_archives.py --indexer-recherche --source ~/Documents/GED
+
+      Verse dans le moteur de recherche de la GED toutes les lignes
+      « indexer » et « renommer » de propositions.csv, texte des PDF compris
+      (OCR des scans). Le fichier est retrouve sous son nom HM ou sous son
+      nom d'origine. Relancable : un document deja lu n'est pas relu.
+      --tout : ajoute aussi les lignes « a_decider », sous leur nom
+      d'origine, pour que toute l'archive soit cherchable des maintenant.
+      --appliquer le fait aussi, au fil de l'eau, pour ce qu'il traite.
+
+NOUVEAUTES (octobre 2026)
+-------------------------
+  - Prefixe selon l'annee du document : HM25-… pour 2025, HM26-… pour 2026.
+    Un document d'une autre annee n'est plus bloque « hors perimetre », et
+    la numerotation se fait par annee : le 009 de 2025 et le 009 de 2026 ne
+    sont plus en conflit.
+  - Correspondant lu sur plusieurs niveaux : le DERNIER dossier pertinent
+    sous la regle (…/Courrier entrants/ACTIC -> ACTIC ;
+    …/Contrats Fournisseur/ECO-cuisine/FACTURE -> ECO-cuisine). Les dossiers
+    de rangement (mois, annees, « Facture », « Scan »…) sont sautes.
+    carte_import.json porte un champ « tiers » par dossier pour forcer la
+    valeur a la main ; « tiers_propose » montre ce que le script a lu.
+  - Indexation dans le moteur de recherche : nom, objet, correspondant,
+    ancien nom, chemin des dossiers et texte des PDF. --sans-texte pour
+    sauter l'OCR (plus rapide).
+
 OPTIONS
 -------
   --source <dossier>   arborescence a migrer. Obligatoire sauf annulation.
@@ -61,10 +88,15 @@ OPTIONS
   --sans-index         renommer et uploader sans ecrire au registre.
   --ecraser            remplacer un fichier WorkDrive de meme nom.
   --forcer             pas de confirmation interactive.
+  --sans-texte         (avec --appliquer ou --indexer-recherche) indexer la
+                       recherche sans lire le texte des PDF.
 
 NORME PRODUITE
 --------------
-    HM26-{SERVICE}-{TYPE}_{AAAAMMJJ}_{NNN}_{OBJET}.pdf
+    HM{AA}-{SERVICE}-{TYPE}_{AAAAMMJJ}_{NNN}_{OBJET}.pdf
+
+AA = deux derniers chiffres de l'annee du document (HM26 si l'annee est
+inconnue).
 
 Quand la date est partiellement inconnue, les positions manquantes sont
 a zero (20260800 pour « aout 2026 »), ce que le registre accepte deja.
@@ -421,18 +453,55 @@ def _tiers_plausible(candidat):
     return True
 
 
+# Dossiers de rangement : ils classent, ils ne nomment pas un correspondant.
+DOSSIERS_DE_RANGEMENT = {
+    "facture", "factures", "contrat", "contrats", "courrier", "courriers",
+    "scan", "scans", "scanne", "pdf", "copie", "copies", "original", "originaux",
+    "annexe", "annexes", "piece jointe", "pieces jointes", "divers", "autres",
+    "archive", "archives", "ancien", "anciens", "nouveau", "dossier", "dossiers",
+    "mandat", "mandats", "situation", "recu", "recus", "envoye", "envoyes",
+    "signe", "signes", "valide", "a signer", "brouillon", "brouillons", "test",
+    "prestation de service", "prestations de service", "prestations",
+}
+
+
+def _dossier_de_rangement(candidat):
+    n = normaliser(candidat)
+    return n in DOSSIERS_DE_RANGEMENT or any(
+        n.startswith(m + " ") and len(n.split()) <= 2 for m in ("scan", "copie", "annexe"))
+
+
+def tiers_du_dossier(sous_dossier, regle):
+    """Dernier dossier pertinent SOUS celui consomme par la regle.
+
+    Le nom du correspondant est souvent le niveau le plus profond
+    (…/Courrier entrants/ACTIC). On remonte depuis le fond en sautant mois,
+    annees et dossiers de rangement :
+    …/Contrats Fournisseur/ECO-cuisine/FACTURE -> ECO-cuisine.
+    """
+    parts = [p for p in Path(sous_dossier).parts if p not in (".", "")]
+    profondeur = regle.get("profondeur", 0)
+    if not profondeur or len(parts) <= profondeur:
+        return ""
+    for candidat in reversed(parts[profondeur:]):
+        if _tiers_plausible(candidat) and not _dossier_de_rangement(candidat):
+            return candidat.strip()
+    return ""
+
+
 def extraire_tiers(nom, sous_dossier, regle):
     """Expediteur, destinataire ou titulaire du dossier.
 
-    Lu au segment qui suit immediatement celui consomme par la regle.
+    Ordre : valeur forcee dans carte_import.json (« tiers »), puis dernier
+    dossier pertinent sous la regle, puis indices dans le nom du fichier.
     """
+    if (regle.get("tiers") or "").strip():
+        return regle["tiers"].strip()
+
     if regle.get("tiers_depuis_sous_dossier"):
-        parts = [p for p in Path(sous_dossier).parts if p not in (".", "")]
-        profondeur = regle.get("profondeur", 0)
-        if profondeur and len(parts) > profondeur:
-            candidat = parts[profondeur]
-            if _tiers_plausible(candidat):
-                return candidat.strip()
+        trouve = tiers_du_dossier(sous_dossier, regle)
+        if trouve:
+            return trouve
 
     if "appui telecom" in chemin_normalise(sous_dossier):
         return "Comores Telecom"
@@ -507,10 +576,18 @@ def nettoyer_objet(nom, numero, date_tuple, tiers, sens=""):
     return "_".join(t.split())[:70].strip("_") or "document"
 
 
+def annee_courte(date_tuple):
+    """« 25 » pour un document de 2025 ; ANNEE si l'annee est inconnue."""
+    aaaa = date_tuple[0] if date_tuple else 0
+    return f"{aaaa % 100:02d}" if aaaa else ANNEE
+
+
 def nom_hm26(service, type_doc, date_tuple, numero, objet):
+    """Nom normalise. Le prefixe suit l'annee du document : HM25, HM26…"""
     aaaa, mm, jj = date_tuple
     jeton = f"{aaaa or 2000 + int(ANNEE):04d}{mm:02d}{jj:02d}"
-    return f"HM{ANNEE}-{service}-{type_doc}_{jeton}_{numero or 'XXX'}_{objet}.pdf"
+    return (f"HM{annee_courte(date_tuple)}-{service}-{type_doc}_{jeton}_"
+            f"{numero or 'XXX'}_{objet}.pdf")
 
 
 # ===========================================================================
@@ -609,6 +686,9 @@ def cartographier(source):
             "action": regle["action"],
             "tiers_depuis_sous_dossier": regle["tiers_depuis_sous_dossier"],
             "profondeur": regle.get("profondeur", 0),
+            "tiers_propose": tiers_du_dossier(relatif, regle)
+                             if regle["tiers_depuis_sous_dossier"] else "",
+            "tiers": "",
             "note": note,
         }
 
@@ -621,6 +701,8 @@ def cartographier(source):
             "  ignorer   ne touche a rien",
             "  a_decider bloque la ligne : le script refusera de la traiter",
             "Les lignes en a_decider avec une note sont celles a trancher.",
+            "tiers : laisse vide pour garder tiers_propose (lu dans le dernier",
+            "  dossier pertinent) ; renseigne-le pour forcer le correspondant.",
         ],
         "_services_et_types_disponibles": {s: sorted(t) for s, t in sorted(dispo.items())},
         "dossiers": dossiers,
@@ -679,6 +761,8 @@ def numeroter_series(lignes, noms_registre):
     accepte ou corrige. L'attribution d'un numero d'enregistrement reste son
     acte, le script ne fait que lui epargner la frappe.
     """
+    # Une serie = une annee x un service x un type : le registre repart a 001
+    # chaque annee (HM25-DGA-CSOR 009 et HM26-DGA-CSOR 009 coexistent).
     maxima = defaultdict(int)
 
     for nom in noms_registre:
@@ -687,12 +771,12 @@ def numeroter_series(lignes, noms_registre):
             continue
         chiffres = re.sub(r"\D", "", m.group("numero"))
         if chiffres:
-            cle = (m.group("service").upper(), m.group("type").upper())
+            cle = (m.group("annee"), m.group("service").upper(), m.group("type").upper())
             maxima[cle] = max(maxima[cle], int(chiffres))
 
     for ligne in lignes:
         if ligne["Numero"] and ligne["Service"] and ligne["Type"]:
-            cle = (ligne["Service"], ligne["Type"])
+            cle = (annee_courte(ligne["_date"]), ligne["Service"], ligne["Type"])
             maxima[cle] = max(maxima[cle], int(ligne["Numero"]))
 
     a_combler = [l for l in lignes
@@ -703,7 +787,7 @@ def numeroter_series(lignes, noms_registre):
 
     attribues = 0
     for ligne in a_combler:
-        cle = (ligne["Service"], ligne["Type"])
+        cle = (annee_courte(ligne["_date"]), ligne["Service"], ligne["Type"])
         maxima[cle] += 1
         ligne["Numero"] = f"{maxima[cle]:03d}"
         ligne["Numero source"] = "genere"
@@ -777,9 +861,9 @@ def proposer(source, numeroter=False):
                 objet = nettoyer_objet(f["nom"], numero, (0, 0, 0), tiers,
                                        sens=info.get("sens", ""))
             else:
-                remarques.append(f"annee {aaaa}, hors perimetre {2000 + int(ANNEE)}")
-                if action == "indexer":
-                    action = "a_decider"
+                # L'annee entre dans le prefixe (HM25-…) et dans la serie de
+                # numerotation : plus de blocage « hors perimetre ».
+                remarques.append(f"annee {aaaa} -> prefixe HM{aaaa % 100:02d}")
 
         # Le verdict sur l'absence de numero est rendu APRES la boucle :
         # --numeroter peut encore combler le trou, et il lui faut d'abord
@@ -877,10 +961,11 @@ def proposer(source, numeroter=False):
         if (ligne["Numero"] and ligne["Service"] and ligne["Type"]
                 and ligne["Numero source"] != "genere"
                 and ligne["Action"] != "ignorer"):
-            par_serie[(ligne["Service"], ligne["Type"], ligne["Numero"])].append(ligne)
+            par_serie[(annee_courte(ligne["_date"]), ligne["Service"], ligne["Type"],
+                       ligne["Numero"])].append(ligne)
 
     conflits_numero = 0
-    for (service, type_doc, numero), groupe in par_serie.items():
+    for (annee_serie, service, type_doc, numero), groupe in par_serie.items():
         if len(groupe) < 2:
             continue
         conflits_numero += 1
@@ -891,7 +976,7 @@ def proposer(source, numeroter=False):
             if len(autres) > 3:
                 detail += f" | +{len(autres) - 3}"
             ligne["Remarque"] = (ligne["Remarque"] + " ; " if ligne["Remarque"] else "") \
-                + f"NUMERO {service}-{type_doc} {numero} partage avec : {detail}"
+                + f"NUMERO HM{annee_serie}-{service}-{type_doc} {numero} partage avec : {detail}"
             if ligne["Action"] == "indexer":
                 ligne["Action"] = "a_decider"
 
@@ -1204,6 +1289,136 @@ def uploader(zc, chemin, nom, folder_id, ecraser=False):
 
 
 # ===========================================================================
+# Moteur de recherche de la GED
+# ===========================================================================
+def module_recherche():
+    """recherche.py (a cote de app.py), ou None s'il est absent."""
+    try:
+        import recherche  # noqa: PLC0415
+        return recherche
+    except Exception as exc:  # noqa: BLE001
+        print(f"  (moteur de recherche indisponible : {exc})")
+        return None
+
+
+def _date_lisible(date):
+    """2026-05-00 -> 2026-05 ; 2026-00-00 -> 2026."""
+    if not date:
+        return ""
+    if date.endswith("-00-00"):
+        return date[:4]
+    if date.endswith("-00"):
+        return date[:7]
+    return date
+
+
+def document_recherche(ligne, chemin, rid=""):
+    """Fiche du moteur de recherche pour une ligne de propositions.csv.
+
+    L'ancien nom et le chemin des dossiers deviennent des mots-cles : on
+    retrouve ainsi un document par ce que l'equipe connait deja
+    (« CS-REF-009 », « Courrier sotants/Exim bank »).
+    """
+    service, type_doc = ligne.get("Service", ""), ligne.get("Type", "")
+    date = _date_lisible(ligne.get("Date", ""))
+    return {
+        "nom": ligne.get("Nom HM26") or ligne.get("Fichier origine"),
+        "service": SERVICES.get(service, service),
+        "type_doc": TYPES.get(type_doc, type_doc),
+        "date": date,
+        "annee": date[:4],
+        "sens": {"entrant": "Entrant", "sortant": "Sortant"}.get(ligne.get("Sens", ""), ""),
+        "correspondant": ligne.get("Tiers", ""),
+        "objet": ligne.get("Objet", ""),
+        "lien": f"https://workdrive.zoho.com/file/{rid}" if rid else "",
+        "source": "migration des archives",
+        "origine": ligne.get("Fichier origine", ""),
+        "chemin": str(chemin),
+        "md5": ligne.get("MD5", ""),
+        "mots_cles": " ".join([Path(ligne.get("Fichier origine", "")).stem,
+                               ligne.get("Sous-dossier", "").replace("/", " ")]),
+    }
+
+
+def _textes_deja_lus(rech):
+    """Noms deja indexes AVEC leur texte : l'OCR ne sera pas refait."""
+    try:
+        c = rech.connexion()
+        noms = {r[0] for r in c.execute("SELECT nom FROM documents WHERE texte <> ''")}
+        c.close()
+        return noms
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def _liens_journal():
+    """resource_id WorkDrive deja obtenus, par fichier d'origine."""
+    liens = {}
+    if JOURNAL.exists():
+        with open(JOURNAL, "r", encoding="utf-8-sig") as f:
+            for l in csv.DictReader(f, delimiter=";"):
+                if l.get("resource_id"):
+                    liens[l.get("Fichier origine", "")] = l["resource_id"]
+    return liens
+
+
+def indexer_recherche(source, args):
+    """Verse propositions.csv dans le moteur de recherche, sans rien uploader
+    ni ecrire au registre."""
+    racine = Path(source).expanduser().resolve()
+    if not PROPOSITIONS.exists():
+        print(f"ERREUR : {PROPOSITIONS.name} introuvable. Lance --proposer.")
+        return
+    rech = module_recherche()
+    if rech is None:
+        return
+    avec_texte = "--sans-texte" not in args
+    limite = valeur_option(args, "--limite")
+    limite = int(limite) if limite and limite.isdigit() else None
+
+    # --tout : les lignes « a_decider » aussi. Elles entrent dans la
+    # recherche sous leur nom d'origine (leur nom HM n'est pas encore valide),
+    # marquees « pas encore en ligne ».
+    actions = ("indexer", "renommer", "a_decider") if "--tout" in args \
+        else ("indexer", "renommer")
+    with open(PROPOSITIONS, "r", encoding="utf-8-sig") as f:
+        lignes = [l for l in csv.DictReader(f, delimiter=";")
+                  if (l.get("Action") or "").strip().lower() in actions]
+    if limite:
+        lignes = lignes[:limite]
+
+    deja = _textes_deja_lus(rech) if avec_texte else set()
+    liens = _liens_journal()
+    print(f"\n=== MOTEUR DE RECHERCHE ===\n")
+    print(f"Lignes retenues ({', '.join(actions)}) : {len(lignes)}")
+    print(f"Texte des PDF : {'oui (OCR des scans, patience)' if avec_texte else 'non'}")
+    print(f"Index : {rech.F_INDEX}\n")
+
+    n_ok = n_absent = 0
+    for i, ligne in enumerate(lignes, 1):
+        dossier = racine / ligne.get("Sous-dossier", "")
+        chemin = dossier / (ligne.get("Nom HM26") or "")
+        if not chemin.is_file():
+            chemin = dossier / ligne.get("Fichier origine", "")
+        if not chemin.is_file():
+            n_absent += 1
+            continue
+        doc = document_recherche(ligne, chemin, liens.get(ligne.get("Fichier origine", ""), ""))
+        if (ligne.get("Action") or "").strip().lower() == "a_decider":
+            doc["nom"] = ligne.get("Fichier origine", doc["nom"])
+            doc["mots_cles"] += " " + (ligne.get("Nom HM26") or "")
+        lire = avec_texte and doc["nom"] not in deja
+        rech.indexer_fichier(doc, chemin if lire else None, en_tache=False)
+        n_ok += 1
+        print(f"  [{i}/{len(lignes)}] {'T ' if lire else '  '}{doc['nom'][:70]}")
+
+    print(f"\n  indexes      : {n_ok}")
+    print(f"  introuvables : {n_absent}")
+    print("\nPour l'envoyer sur le serveur :")
+    print("  ./venv/bin/python recherche.py --exporter index_ged.jsonl")
+
+
+# ===========================================================================
 # PASSE 3 — application
 # ===========================================================================
 def appliquer(source, args):
@@ -1220,7 +1435,9 @@ def appliquer(source, args):
     sans_renommer = "--sans-renommer" in args
     sans_upload = "--sans-upload" in args
     sans_index = "--sans-index" in args
+    sans_texte = "--sans-texte" in args
     deposant = valeur_option(args, "--deposant", "Import de masse")
+    rech = module_recherche()
 
     with open(PROPOSITIONS, "r", encoding="utf-8-sig") as f:
         lignes = list(csv.DictReader(f, delimiter=";"))
@@ -1321,6 +1538,7 @@ def appliquer(source, args):
     print(f"  upload          : {'non' if sans_upload else 'oui'}")
     print(f"  indexation      : {'non' if sans_index else 'oui'}")
     print(f"  ecrasement      : {'OUI' if ecraser else 'non'}")
+    print(f"  recherche       : {'non (recherche.py absent)' if rech is None else ('oui, sans texte' if sans_texte else 'oui, texte compris')}")
 
     if not forcer:
         total = len(a_indexer) + len(a_renommer)
@@ -1348,6 +1566,12 @@ def appliquer(source, args):
             renommages.append([horodatage, str(chemin), str(cible)])
             n_renomme += 1
             print(f"  [R{i}/{len(a_renommer)}] {ligne['_cible'][:62]}")
+            if rech is not None:
+                try:
+                    rech.indexer_fichier(document_recherche(ligne, cible),
+                                         None if sans_texte else cible, en_tache=False)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"      (recherche : {exc})")
         except OSError as exc:
             n_echec += 1
             print(f"  [R{i}] ECHEC renommage : {exc}")
@@ -1414,6 +1638,16 @@ def appliquer(source, args):
                     n_renomme += 1
                 except OSError as exc:
                     msg = (msg + f" / renommage : {exc}").strip(" /")
+
+        if rech is not None:
+            emplacement = chemin.parent / cible_nom
+            if not emplacement.exists():
+                emplacement = chemin
+            try:
+                rech.indexer_fichier(document_recherche(ligne, emplacement, rid),
+                                     None if sans_texte else emplacement, en_tache=False)
+            except Exception as exc:  # noqa: BLE001
+                msg = (msg + f" / recherche : {exc}").strip(" /")
 
         print(f"{prefixe} {cible_nom[:58]}" + (f" — {msg}" if msg else ""))
         journal.append([horodatage, ligne["Fichier origine"], "indexer", rid,
@@ -1516,7 +1750,9 @@ def main():
         print("ERREUR : --source <dossier> est obligatoire.")
         return
 
-    if "--cartographier" in args:
+    if "--indexer-recherche" in args:
+        indexer_recherche(source, args)
+    elif "--cartographier" in args:
         cartographier(source)
     elif "--proposer" in args:
         proposer(source, numeroter="--numeroter" in args)
@@ -1524,7 +1760,7 @@ def main():
         appliquer(source, args)
     else:
         print(__doc__)
-        print("Choisis --cartographier, --proposer ou --appliquer.")
+        print("Choisis --cartographier, --proposer, --appliquer ou --indexer-recherche.")
 
 
 if __name__ == "__main__":
