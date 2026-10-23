@@ -30,7 +30,8 @@ LIGNE DE COMMANDE (depuis la racine du projet)
   ./venv/bin/python recherche.py --depuis-sheet               # registre Zoho Sheet
   ./venv/bin/python recherche.py --indexer-dossier ~/Documents/GED [--sans-texte]
   ./venv/bin/python recherche.py --exporter index_ged.jsonl
-  ./venv/bin/python recherche.py --importer index_ged.jsonl
+  ./venv/bin/python recherche.py --importer index_ged.jsonl [--synchroniser]
+  ./venv/bin/python recherche.py --supprimer "HM26-…pdf"
 
 TRANSFÉRER L'INDEX DU POSTE VERS LE SERVEUR
 -------------------------------------------
@@ -42,6 +43,9 @@ exporte, on copie dans le dossier courrier/ du serveur, on importe :
   docker exec ged-wakati python /app/recherche.py --importer /app/courrier/index_ged.jsonl
 
 L'import fusionne : il n'efface rien, il complète et met à jour.
+Avec --synchroniser, il retire en plus les fiches « migration des archives »
+absentes du fichier (noms corrigés depuis). Les archivages faits dans
+l'application et les fiches du registre ne sont jamais touchés.
 """
 
 import csv
@@ -477,14 +481,58 @@ def exporter(chemin):
     return n
 
 
-def importer(chemin):
+def supprimer(noms):
+    """Retire des documents de l'index (nom corrige, envoi annule)."""
     n = 0
+    with _verrou:
+        c = connexion()
+        try:
+            for nom in noms:
+                cur = c.execute("DELETE FROM documents WHERE nom=?", (nom,))
+                n += max(cur.rowcount, 0)
+                if fts5_disponible():
+                    c.execute("DELETE FROM documents_fts WHERE nom=?", (nom,))
+            c.commit()
+        finally:
+            c.close()
+    return n
+
+
+def purger_source(source, garder):
+    """Retire les documents d'une source qui ne figurent plus dans `garder`.
+    Sert a la migration des archives : un nom corrige remplace l'ancien."""
+    c = connexion()
+    try:
+        noms = [r[0] for r in c.execute("SELECT nom FROM documents WHERE source=?", (source,))]
+    finally:
+        c.close()
+    return supprimer([n for n in noms if n not in garder])
+
+
+# Seule source synchronisee a l'import : elle vient entierement du poste.
+# Les archivages faits dans l'application et la reindexation du registre
+# vivent sur le serveur et ne sont jamais retires par un import.
+SOURCE_MIGRATION = "migration des archives"
+
+
+def importer(chemin, synchroniser=False):
+    """Fusionne un export. synchroniser=True retire en plus les fiches de la
+    migration des archives absentes du fichier (noms corriges depuis).
+    Retourne (importes, retires)."""
+    n = 0
+    noms_migration = set()
     with open(chemin, "r", encoding="utf-8") as f:
         for ligne in f:
             ligne = ligne.strip()
-            if ligne and indexer(json.loads(ligne)):
+            if not ligne:
+                continue
+            doc = json.loads(ligne)
+            if doc.get("source") == SOURCE_MIGRATION:
+                noms_migration.add(doc.get("nom"))
+            if indexer(doc):
                 n += 1
-    return n
+    retires = purger_source(SOURCE_MIGRATION, noms_migration) if synchroniser else 0
+    return n, retires
 
 
 # ---------------------------------------------------------------------------
@@ -645,7 +693,12 @@ def main():
         print(f"{exporter(chemin)} document(s) exporté(s) dans {chemin}")
     elif "--importer" in args:
         chemin = _option(args, "--importer")
-        print(f"{importer(chemin)} document(s) importé(s).")
+        n, retires = importer(chemin, synchroniser="--synchroniser" in args)
+        print(f"{n} document(s) importé(s)."
+              + (f" {retires} ancienne(s) fiche(s) de migration retirée(s)." if retires else ""))
+    elif "--supprimer" in args:
+        nom = _option(args, "--supprimer")
+        print(f"{supprimer([nom]) if nom else 0} document(s) retiré(s).")
     else:
         print(__doc__)
 

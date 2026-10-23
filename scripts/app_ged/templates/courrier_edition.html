@@ -59,7 +59,7 @@
 
               <div class="champ">
                 <label for="e_objet">Objet</label>
-                <input type="text" id="e_objet" name="objet" value="{{ rep.objet }}" required>
+                <input type="text" id="e_objet" name="objet" value="{{ rep.objet }}" required oninput="compterPC()">
               </div>
 
               <div class="rang">
@@ -92,6 +92,10 @@
                   <input type="date" id="e_date_e" name="date_entrant" value="{{ rep.date_entrant }}">
                 </div>
                 <div class="champ">
+                  <label for="e_date_r">Reçu le</label>
+                  <input type="date" id="e_date_r" name="date_reception" value="{{ rep.date_reception }}">
+                </div>
+                <div class="champ">
                   <label for="e_service">Service émetteur</label>
                   <select id="e_service" name="service">
                     {% for code, nom in services.items() %}
@@ -101,9 +105,22 @@
                 </div>
               </div>
 
+              {% if not decision %}
+              <div class="champ">
+                <label for="e_objet_e">Objet du courrier reçu</label>
+                <input type="text" id="e_objet_e" name="objet_entrant" value="{{ rep.objet_entrant }}">
+                <div class="aide">V/Réf., date, « Reçu le » et objet du courrier reçu remplissent
+                  automatiquement les zones correspondantes du texte à l'enregistrement.</div>
+              </div>
+              {% endif %}
+
               <div class="champ">
                 <label for="e_corps">{% if decision %}Texte de la décision{% else %}Texte du courrier{% endif %}</label>
                 <textarea id="e_corps" name="corps" class="corps-lettre" oninput="compterPC()">{{ rep.corps }}</textarea>
+                <div id="zones_pc" class="zones-pc" style="display:none;">
+                  <div class="zones-titre">Zones à compléter avant la soumission — cliquez pour les retrouver dans le texte :</div>
+                  <div id="zones_liste"></div>
+                </div>
                 {% if decision %}
                 <div class="aide">Décision : papier à en-tête, cartouche (objet, référence, date),
                   « Le Directeur Général, » et signature sont ajoutés automatiquement.
@@ -241,11 +258,57 @@ var URL_ENREG = "{{ url_for('courrier.enregistrer', ref=rep.ref) }}";
 var URL_APERCU = "{{ url_for('courrier.apercu', ref=rep.ref) }}";
 
 function compterPC() {
-  var t = document.getElementById('e_corps').value + ' ' + document.getElementById('e_objet').value;
+  var corps = document.getElementById('e_corps');
+  var objet = document.getElementById('e_objet');
+  var t = corps.value + ' ' + objet.value;
   var n = (t.match(/\[à compléter[^\]]*\]/gi) || []).length;
   var b = document.getElementById('badge_pc');
   if (b) { b.textContent = n + ' à compléter'; b.style.display = n ? '' : 'none'; }
+  listerZones();
 }
+
+// Liste cliquable des zones [à compléter : …] : chaque zone est
+// retrouvée et sélectionnée dans le texte, même au fond d'un long courrier.
+function listerZones() {
+  var boite = document.getElementById('zones_pc');
+  var liste = document.getElementById('zones_liste');
+  if (!boite || !liste) { return; }
+  var zones = [];
+  var objet = document.getElementById('e_objet');
+  var corps = document.getElementById('e_corps');
+  [[objet, 'objet'], [corps, 'texte']].forEach(function (c) {
+    var re = /\[à compléter[^\]]*\]/gi, m;
+    while ((m = re.exec(c[0].value)) !== null) {
+      zones.push({champ: c[0], debut: m.index, fin: m.index + m[0].length,
+                  libelle: m[0].slice(1, -1).replace(/^à compléter\s*:?\s*/i, '') || 'à compléter',
+                  ou: c[1]});
+    }
+  });
+  liste.innerHTML = '';
+  zones.forEach(function (z) {
+    var a = document.createElement('button');
+    a.type = 'button';
+    a.className = 'zone-pc';
+    a.textContent = z.libelle + (z.ou === 'objet' ? ' (objet)' : '');
+    a.onclick = function () { allerZone(z); };
+    liste.appendChild(a);
+  });
+  boite.style.display = zones.length ? '' : 'none';
+}
+
+function allerZone(z) {
+  var c = z.champ;
+  c.focus();
+  c.setSelectionRange(z.debut, z.fin);
+  if (c.tagName === 'TEXTAREA') {
+    // Fait défiler le texte jusqu'à la zone sélectionnée
+    var avant = c.value.slice(0, z.debut).split('\n').length - 1;
+    var ligne = parseFloat(getComputedStyle(c).lineHeight) || 20;
+    c.scrollTop = Math.max(0, avant * ligne - c.clientHeight / 3);
+  }
+  c.scrollIntoView({block: 'center', behavior: 'smooth'});
+}
+document.addEventListener('DOMContentLoaded', compterPC);
 
 // L'aperçu reflète le texte affiché : on enregistre d'abord, sans recharger la page.
 function enregistrerPuisApercu(ev) {

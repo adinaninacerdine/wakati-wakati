@@ -1106,7 +1106,18 @@ def variables_reponse(rep):
 
 def fusionner(corps, valeurs):
     """Remplace les {{variables}}. Une valeur absente devient un
-    [à compléter : …] visible, jamais une invention."""
+    [à compléter : …] visible, jamais une invention.
+
+    Exception : la référence et la date du courrier reçu sont des
+    compléments facultatifs de la phrase d'accroche. Absentes, on retire
+    le complément (« votre courrier, reçu le … ») plutôt que de bloquer la
+    soumission sur une référence que l'expéditeur n'a souvent pas donnée."""
+    texte = corps or ""
+    if not valeurs.get("ref_entrant"):
+        texte = re.sub(r"\s+référencé\s+\{\{\s*ref_entrant\s*\}\}", "", texte)
+    if not valeurs.get("date_entrant"):
+        texte = re.sub(r"\s+du\s+\{\{\s*date_entrant\s*\}\}", "", texte)
+
     def remplacer(m):
         nom = m.group(1).strip()
         val = valeurs.get(nom, "")
@@ -1116,7 +1127,6 @@ def fusionner(corps, valeurs):
             return PC_VIDE
         return f"[à compléter : {LIBELLES_VARIABLES.get(nom, nom)}]"
 
-    texte = corps or ""
     for _ in range(3):  # la formule de politesse contient {{formule_appel}}
         nouveau = re.sub(r"\{\{\s*([a-z_]+)\s*\}\}", remplacer, texte)
         if nouveau == texte:
@@ -1127,6 +1137,59 @@ def fusionner(corps, valeurs):
 
 def compter_a_completer(texte):
     return len(MOTIF_A_COMPLETER.findall(texte or ""))
+
+
+def zones_a_completer(*textes):
+    """Libellés des zones [à compléter : …] restantes, dans l'ordre."""
+    zones = []
+    for t in textes:
+        for m in MOTIF_A_COMPLETER.finditer(t or ""):
+            lib = m.group(0)[1:-1].split(":", 1)
+            zones.append(lib[1].strip() if len(lib) > 1 else "à compléter")
+    return zones
+
+
+def reappliquer_variables(rep):
+    """Après une modification des champs (V/Réf., date, destinataire…),
+    remplace dans le texte les zones qui attendaient ces valeurs.
+    Sans cela, remplir le champ « V/Réf. » laissait la zone
+    « [à compléter : référence du courrier reçu] » dans le corps, et la
+    soumission restait bloquée sans que l'on comprenne pourquoi."""
+    valeurs = variables_reponse(rep)
+    n = 0
+    # Projets créés avant ce correctif : la référence ou la date du courrier
+    # reçu absente laissait une zone au milieu de la phrase d'accroche.
+    for nom, prefixe in (("ref_entrant", "référencé"), ("date_entrant", "du")):
+        if not valeurs.get(nom):
+            zone = re.escape(f"[à compléter : {LIBELLES_VARIABLES[nom]}]")
+            avant = rep.get("corps") or ""
+            rep["corps"] = re.sub(rf"\s+{prefixe}\s+{zone}", "", avant)
+            n += avant != rep["corps"]
+    for nom, libelle in LIBELLES_VARIABLES.items():
+        val = valeurs.get(nom, "")
+        if not val or nom == "paragraphe_central":
+            continue
+        zone = f"[à compléter : {libelle}]"
+        for champ in ("corps", "objet"):
+            if zone in (rep.get(champ) or ""):
+                n += rep[champ].count(zone)
+                rep[champ] = rep[champ].replace(zone, str(val))
+    return n
+
+
+# « Réf. : BM/DG/2026-047 », « N/Réf : 123/DG », « Référence : AB-12 »
+_MOTIF_REF = re.compile(
+    r"(?:N/|V/|Notre\s+)?R[ée]f(?:[ée]rence)?\.?\s*(?:n[°o]\s*)?[:：]\s*"
+    r"([A-Z0-9][A-Z0-9/\-_.]{2,40}[A-Z0-9])", re.IGNORECASE)
+
+
+def extraire_reference(texte):
+    """Référence de l'expéditeur lue dans le texte du courrier reçu, ou ""."""
+    for m in _MOTIF_REF.finditer((texte or "")[:1500]):
+        ref = m.group(1).strip(" .")
+        if any(c.isdigit() for c in ref):
+            return ref
+    return ""
 
 
 def creer_reponse(champs, entrant_id=""):
@@ -2174,6 +2237,7 @@ def _champs_preparation(entrant_id):
         "correspondant_libre": "" if e.get("correspondant_id") else e.get("correspondant", ""),
         "objet_entrant": e.get("objet", ""),
         "objet": f"Réponse à votre courrier — {e.get('objet', '')}".strip(" —"),
+        "ref_entrant": extraire_reference(texte),
         "date_entrant": e.get("date_doc", ""),
         "date_reception": (e.get("recu_le") or "")[:10],
         "service": e.get("service") or champs["service"],
@@ -2275,7 +2339,9 @@ def enregistrer(ref):
         fiche = correspondant(rep.get("correspondant_id"))
         if fiche:
             rep["categorie"] = fiche.get("categorie", rep.get("categorie", ""))
-        _historiser(rep, "Modifié")
+        remplies = reappliquer_variables(rep)
+        _historiser(rep, "Modifié",
+                    f"{remplies} zone(s) complétée(s) depuis les champs" if remplies else "")
         _ecrire(F_REPONSES, reps)
 
     action = request.form.get("action", "")
@@ -2347,11 +2413,15 @@ def soumettre(ref):
         flash("Ce projet est déjà dans le circuit de validation.", "error")
         return redirect(url_for("courrier.edition", ref=ref))
 
-    reste = compter_a_completer(rep.get("corps")) + \
-        compter_a_completer(rep.get("objet"))
-    if reste:
-        flash(f"Il reste {reste} zone(s) [à compléter] dans le courrier. "
-              "Complétez-les ou supprimez-les avant de soumettre.", "error")
+    zones = zones_a_completer(rep.get("objet"), rep.get("corps"))
+    if zones:
+        liste = " ; ".join(f"« {z} »" for z in zones[:6])
+        if len(zones) > 6:
+            liste += f" … (+{len(zones) - 6})"
+        flash(f"Soumission impossible : il reste {len(zones)} zone(s) à compléter "
+              f"dans le texte du courrier — {liste}. Cliquez sur chaque zone "
+              "listée sous le texte pour la retrouver, remplacez-la ou supprimez-la.",
+              "error")
         return redirect(url_for("courrier.edition", ref=ref))
     if not rep.get("objet", "").strip():
         flash("L'objet du courrier est obligatoire.", "error")

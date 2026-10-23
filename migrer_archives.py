@@ -51,6 +51,16 @@ TROIS PASSES. Les deux premieres n'ecrivent rien d'irreversible.
   ANNULATION DU RENOMMAGE
   ./venv/bin/python migrer_archives.py --annuler-renommage
 
+  ANNULATION D'UN PASSAGE --appliquer (envoi compris)
+  ./venv/bin/python migrer_archives.py --annuler-envoi
+  ./venv/bin/python migrer_archives.py --annuler-envoi "2026-10-20 14:27:01"
+
+      Sans valeur : liste les passages (horodatage du journal). Avec un
+      horodatage : met les fichiers envoyes a la corbeille WorkDrive
+      (restaurables 30 jours), retire leurs lignes du registre Zoho Sheet
+      et de registre_2026.csv, remet les anciens noms sur le poste et
+      retire les fiches du moteur de recherche. Confirmation demandee.
+
   MOTEUR DE RECHERCHE (sans upload ni registre)
   ./venv/bin/python migrer_archives.py --indexer-recherche --source ~/Documents/GED
 
@@ -77,6 +87,21 @@ NOUVEAUTES (octobre 2026)
   - Indexation dans le moteur de recherche : nom, objet, correspondant,
     ancien nom, chemin des dossiers et texte des PDF. --sans-texte pour
     sauter l'OCR (plus rapide).
+
+CORRECTIFS (20 octobre 2026)
+----------------------------
+  - Un fichier DEJA nomme au format HM (renomme lors d'un passage
+    precedent) garde son nom, son numero et sa date. Avant, il etait
+    renomme une seconde fois : HM26-…_054_HM26_DGA_CSOR_…_008_Objet.
+    --appliquer refuse aussi une telle ligne si propositions.csv est perime.
+  - Numero lu apres le destinataire dans un courrier sortant
+    (« CS-BCC-010-… », « CS-Min des Postes -009-… ») au lieu d'en generer un.
+  - Dates lues n'importe ou dans le nom : 31012025, 20260318, 11-09-2026,
+    0426 (avril 2026) — et retirees de l'objet.
+  - « vœux » -> « voeux », apostrophes typographiques conservees, restes
+    d'extension (« M28pdf ») et apostrophes orphelines retires.
+  - Registre : une date incomplete (2026-01-00) n'est plus ecrite dans la
+    colonne Date ; elle reste dans le nom du fichier.
 
 OPTIONS
 -------
@@ -194,8 +219,16 @@ MOTIF_HM26 = re.compile(
 # ===========================================================================
 # Outils de texte
 # ===========================================================================
+# Ligatures et signes que NFKD ne decompose pas : sans eux « vœux » devient
+# « v_ux » et l'apostrophe typographique colle deux mots.
+TRANSLITTERATION = str.maketrans({
+    "œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE", "ß": "ss",
+    "’": "'", "‘": "'", "«": " ", "»": " ", "•": " ", "–": "-", "—": "-",
+})
+
+
 def sans_accent(texte):
-    t = unicodedata.normalize("NFKD", texte or "")
+    t = unicodedata.normalize("NFKD", (texte or "").translate(TRANSLITTERATION))
     return "".join(c for c in t if not unicodedata.combining(c))
 
 
@@ -334,6 +367,11 @@ MOTIFS_NUMERO = [
     (r"\bn[°o]\s*0*(\d{1,4})", "N° NNN"),
     (r"^(?:decision|note|pv|bordereau|attestation|facture)\s*n?[°o]?\s*0*(\d{1,4})\b",
      "Serie NNN"),
+    # Courrier sortant dont le numero suit le destinataire :
+    # « CS-BCC-010-Reponse… », « CS-Min des Postes -009-Remerciement… ».
+    # Limite aux CS : dans un CE, un numero isole est souvent la reference
+    # de l'expediteur, pas la notre.
+    (r"^cs\s.*?(?:^|\s)(0\d{2})(?=\s|$)", "CS-…-NNN"),
 ]
 
 
@@ -372,6 +410,25 @@ def _annee_pleine(valeur):
 def extraire_date(nom, relatif):
     """Retourne (aaaa, mm, jj, source). Les inconnues valent 0."""
     base = normaliser(nom)
+    base = re.sub(r"(?:\s?pdf)+$", "", base).strip()
+
+    # 0a. AAAAMMJJ accole, n'importe ou : MAPA_20260318_…
+    for m in re.finditer(r"(?:^|\s)(20\d{2})(\d{2})(\d{2})(?=\s|$)", base):
+        aaaa, mm, jj = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= mm <= 12 and 1 <= jj <= 31:
+            return aaaa, mm, jj, "nom AAAAMMJJ"
+
+    # 0b. JJMMAAAA accole, n'importe ou : -31012025, - 25062026 -
+    for m in re.finditer(r"(?:^|\s)(\d{2})(\d{2})(20\d{2})(?=\s|$)", base):
+        jj, mm, aaaa = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= mm <= 12 and 1 <= jj <= 31:
+            return aaaa, mm, jj, "nom JJMMAAAA"
+
+    # 0c. JJ MM AAAA separes, n'importe ou : -11-09-2026, 22-07-2026
+    for m in re.finditer(r"(?:^|\s)(\d{1,2})\s(\d{1,2})\s(20\d{2})(?=\s|$)", base):
+        jj, mm, aaaa = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if 1 <= mm <= 12 and 1 <= jj <= 31:
+            return aaaa, mm, jj, "nom JJ-MM-AAAA"
 
     # 1. JJMMAA accole en fin : -120426
     m = re.search(r"(?:^|\s)(\d{2})(\d{2})(\d{2})(?=\D*$)", base)
@@ -393,6 +450,13 @@ def extraire_date(nom, relatif):
         mm, aa = int(m.group(1)), int(m.group(2))
         if 1 <= mm <= 12 and 20 <= aa <= 40:
             return _annee_pleine(aa), mm, 0, "nom MM-AA"
+
+    # 3b. MMAA accole en fin : -0426
+    m = re.search(r"(?:^|\s)(0[1-9]|1[0-2])(\d{2})(?=\D*$)", base)
+    if m:
+        mm, aa = int(m.group(1)), int(m.group(2))
+        if 20 <= aa <= 40:
+            return _annee_pleine(aa), mm, 0, "nom MMAA"
 
     # 4. Nom de mois, dans le nom puis dans le chemin
     for source_texte, etiquette in ((base, "nom mois"),
@@ -428,8 +492,8 @@ PREFIXES_A_RETIRER = [
     r"^cs\s*\d{1,3}\s+", r"^ce\s*\d{1,3}\s+",
     r"^cs\s+", r"^ce\s+",
     r"^mandat\s*\d*\s*",
-    r"^ac\s*conf\s*rh\s*\d{4}\s*",
-    r"^contrat\s*rh\s*\d{4}\s*",
+    r"^ac\s*conf\s*rh\s*(?:\d{4}\s*)?",
+    r"^contrat\s*rh\s*(?:\d{4}\s*)?",
     r"^ref\s*\d+\s*", r"^n[°o]\s*\d+\s*",
     r"^(decision|note|pv|bordereau|attestation|facture)\s*n?[°o]?\s*\d{1,3}\s+",
 ]
@@ -526,6 +590,8 @@ def nettoyer_objet(nom, numero, date_tuple, tiers, sens=""):
         stem = stem[:-4]
 
     t = sans_accent(stem)
+    # Extension restee dans le nom : « M28pdf », « HM5 pdf », « .pdf (2) »
+    t = re.sub(r"\.?pdf\b", " ", t, flags=re.IGNORECASE)
     t = re.sub(r"[_\-–—]+", " ", t)
     t = re.sub(r"[()\[\]{}]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
@@ -536,11 +602,30 @@ def nettoyer_objet(nom, numero, date_tuple, tiers, sens=""):
             t = nouveau
             break
 
+    # Le numero a sa place dans le nom : on ne le laisse pas en plus dans
+    # l'objet (« CS-BCC-010-Reponse » -> objet « Reponse »).
+    if numero:
+        t = re.sub(rf"(?:^|\s){numero}(?=\s|$)", " ", t, count=1).strip()
+
     # Suffixe de scanner : « _0001 », « 001 »
     t = re.sub(r"\s0{2,}\d\s*$", "", t)
 
+    # Dates completes, ou qu'elles soient : 31012025, 20260318, 11 09 2026
+    def _date_valide(m):
+        a, b, c = (int(x) for x in m.groups())
+        return ((1 <= b <= 12 and 1 <= c <= 31 and 2000 <= a <= 2099)
+                or (1 <= b <= 12 and 1 <= a <= 31 and 2000 <= c <= 2099))
+    t = re.sub(r"(?:^|\s)(\d{4})(\d{2})(\d{2})(?=\s|$)",
+               lambda m: " " if _date_valide(m) else m.group(0), t)
+    t = re.sub(r"(?:^|\s)(\d{2})(\d{2})(\d{4})(?=\s|$)",
+               lambda m: " " if _date_valide(m) else m.group(0), t)
+    t = re.sub(r"(?:^|\s)(\d{1,2})\s(\d{1,2})\s(20\d{2})(?=\s|$)",
+               lambda m: " " if _date_valide(m) else m.group(0), t)
+    t = re.sub(r"\s+", " ", t).strip()
+
     # Dates en fin de chaine, du plus precis au plus vague
     t = re.sub(r"\s\d{2}\s?\d{2}\s?\d{2}\s*$", "", t)
+    t = re.sub(r"\s(0[1-9]|1[0-2])(2\d|3\d)\s*$", "", t)
     t = re.sub(r"\s\d{1,2}\s\d{2,4}\s*$", "", t)
     t = re.sub(rf"\s({MOTIF_MOIS})(\s\d{{2,4}})?\s*$", "", t, flags=re.IGNORECASE)
     t = re.sub(r"\s(19|20)\d{2}\s*$", "", t)
@@ -563,6 +648,7 @@ def nettoyer_objet(nom, numero, date_tuple, tiers, sens=""):
             t = " ".join(gardes)
 
     t = re.sub(r"[^A-Za-z0-9 ']+", " ", t)
+    t = re.sub(r"(?:^|\s)'+|'+(?=\s|$)", " ", t)   # apostrophes orphelines
     t = re.sub(r"\s+", " ", t).strip()
 
     if tiers and not sens:
@@ -842,13 +928,35 @@ def proposer(source, numeroter=False):
         if f["nom"].lower().endswith(".pdf.pdf"):
             remarques.append("extension doublee, corrigee par le renommage")
 
-        numero, src_num = extraire_numero(f["nom"])
-        aaaa, mm, jj, src_date = extraire_date(f["nom"], f["sous_dossier"])
+        # Fichier DEJA au format HM (renomme par un passage precedent, ou par
+        # l'application) : son nom fait foi. On le relit au lieu de le
+        # renommer une seconde fois — sinon « HM26-…_008_Objet » devient
+        # « HM26-…_054_HM26_DGA_CSOR_…_008_Objet ».
+        deja_hm = MOTIF_HM26.match(f["nom"])
         tiers = extraire_tiers(f["nom"], f["sous_dossier"], info)
-        objet = nettoyer_objet(f["nom"], numero, (aaaa, mm, jj), tiers,
-                               sens=info.get("sens", ""))
+        if deja_hm:
+            d = deja_hm.group("date")
+            aaaa, mm, jj = int(d[:4]), int(d[4:6]), int(d[6:])
+            src_date = "nom HM existant" if aaaa else ""
+            numero = deja_hm.group("numero").upper()
+            src_num = "nom HM existant" if numero != "XXX" else ""
+            if numero == "XXX":
+                numero = ""
+            objet = deja_hm.group("objet")
+            nom_service = deja_hm.group("service").upper()
+            nom_type = deja_hm.group("type").upper()
+            if (service, type_doc) != (nom_service, nom_type) and service and type_doc:
+                remarques.append(f"le nom dit {nom_service}-{nom_type}, le dossier "
+                                 f"{service}-{type_doc} : le nom est garde")
+            service, type_doc = nom_service, nom_type
+            remarques.append("deja au format HM — nom conserve")
+        else:
+            numero, src_num = extraire_numero(f["nom"])
+            aaaa, mm, jj, src_date = extraire_date(f["nom"], f["sous_dossier"])
+            objet = nettoyer_objet(f["nom"], numero, (aaaa, mm, jj), tiers,
+                                   sens=info.get("sens", ""))
 
-        if aaaa and aaaa != 2000 + int(ANNEE):
+        if aaaa and aaaa != 2000 + int(ANNEE) and not deja_hm:
             if src_date == "nom annee":
                 # Une annee nue dans un nom de fichier appartient souvent a
                 # l'objet, pas a la date : « campagne QoS 2025 » n'est pas un
@@ -880,8 +988,11 @@ def proposer(source, numeroter=False):
                 remarques.append(f"{service}-{type_doc} sans dossier WorkDrive")
                 action = "a_decider"
 
-        propose = ""
-        if service and type_doc:
+        # Nom fige : un nom HM complet (numero compris) se garde tel quel.
+        nom_fige = f["nom"] if deja_hm and numero else ""
+
+        propose = nom_fige
+        if service and type_doc and not propose:
             propose = nom_hm26(service, type_doc, (aaaa, mm, jj), numero, objet)
 
         lignes.append({
@@ -905,6 +1016,7 @@ def proposer(source, numeroter=False):
             "_manque_numero": manque_numero,
             "_date": (aaaa, mm, jj),
             "_objet": objet,
+            "_nom_fige": nom_fige,
         })
 
     # --- Numerotation des series incompletes ----------------------------
@@ -921,9 +1033,9 @@ def proposer(source, numeroter=False):
             if ligne["Action"] == "indexer":
                 ligne["Action"] = "a_decider"
         if ligne["Service"] and ligne["Type"]:
-            ligne["Nom HM26"] = nom_hm26(ligne["Service"], ligne["Type"],
-                                         ligne["_date"], ligne["Numero"],
-                                         ligne["_objet"])
+            ligne["Nom HM26"] = ligne["_nom_fige"] or nom_hm26(
+                ligne["Service"], ligne["Type"], ligne["_date"], ligne["Numero"],
+                ligne["_objet"])
             noms_proposes[ligne["Nom HM26"]].append(
                 f"{ligne['Sous-dossier']}/{ligne['Fichier origine']}")
         if ligne["Nom HM26"] and ligne["Nom HM26"] in noms_registre:
@@ -1163,7 +1275,9 @@ def valeurs_registre(ligne, rid, deposant):
         "nom_fichier": ligne["Nom HM26"],
         "service": SERVICES.get(service, service),
         "type_doc": TYPES.get(type_doc, type_doc),
-        "date": ligne.get("Date", ""),
+        # Une date incomplete (2026-01-00) n'est pas une date pour le
+        # tableur : elle reste lisible dans le nom du fichier.
+        "date": "" if (ligne.get("Date", "") or "").endswith("-00") else ligne.get("Date", ""),
         "ile": "",
         "objet": ligne.get("Objet", ""),
         "branche": BRANCHES.get(type_doc) or BRANCHES_SERVICE.get(service, "Divers"),
@@ -1211,7 +1325,9 @@ def base_workdrive():
 
 
 def lister_dossier(zc, folder_id):
-    noms = set()
+    """{nom: resource_id} des fichiers d'un dossier WorkDrive, et un booleen
+    qui dit si le listage est complet."""
+    noms = {}
     offset = 0
     limite = 50
     while True:
@@ -1234,7 +1350,7 @@ def lister_dossier(zc, folder_id):
             attrs = item.get("attributes", {}) or {}
             nom = attrs.get("name") or attrs.get("FileName") or ""
             if nom:
-                noms.add(nom)
+                noms[nom] = item.get("id") or attrs.get("resource_id") or ""
         if len(lot) < limite:
             break
         offset += limite
@@ -1291,6 +1407,9 @@ def uploader(zc, chemin, nom, folder_id, ecraser=False):
 # ===========================================================================
 # Moteur de recherche de la GED
 # ===========================================================================
+SOURCE_RECHERCHE = "migration des archives"
+
+
 def module_recherche():
     """recherche.py (a cote de app.py), ou None s'il est absent."""
     try:
@@ -1331,7 +1450,7 @@ def document_recherche(ligne, chemin, rid=""):
         "correspondant": ligne.get("Tiers", ""),
         "objet": ligne.get("Objet", ""),
         "lien": f"https://workdrive.zoho.com/file/{rid}" if rid else "",
-        "source": "migration des archives",
+        "source": SOURCE_RECHERCHE,
         "origine": ligne.get("Fichier origine", ""),
         "chemin": str(chemin),
         "md5": ligne.get("MD5", ""),
@@ -1352,13 +1471,19 @@ def _textes_deja_lus(rech):
 
 
 def _liens_journal():
-    """resource_id WorkDrive deja obtenus, par fichier d'origine."""
-    liens = {}
+    """resource_id WorkDrive deja obtenus, par fichier d'origine.
+    Les envois annules (--annuler-envoi) sont ecartes : leur fichier est a la
+    corbeille de WorkDrive."""
+    liens, annules = {}, set()
     if JOURNAL.exists():
         with open(JOURNAL, "r", encoding="utf-8-sig") as f:
-            for l in csv.DictReader(f, delimiter=";"):
-                if l.get("resource_id"):
-                    liens[l.get("Fichier origine", "")] = l["resource_id"]
+            lignes = list(csv.DictReader(f, delimiter=";"))
+        annules = {l["resource_id"] for l in lignes
+                   if l.get("Action") == "annule" and l.get("resource_id")}
+        for l in lignes:
+            rid = l.get("resource_id")
+            if rid and l.get("Action") != "annule" and rid not in annules:
+                liens[l.get("Fichier origine", "")] = rid
     return liens
 
 
@@ -1412,8 +1537,19 @@ def indexer_recherche(source, args):
         n_ok += 1
         print(f"  [{i}/{len(lignes)}] {'T ' if lire else '  '}{doc['nom'][:70]}")
 
+    # Fiches de migration qui ne correspondent plus a aucune ligne de
+    # propositions.csv (nom corrige depuis) : on les retire de l'index.
+    n_purge = 0
+    if not limite and hasattr(rech, "purger_source"):
+        with open(PROPOSITIONS, "r", encoding="utf-8-sig") as f:
+            tous = list(csv.DictReader(f, delimiter=";"))
+        valides = {l.get("Nom HM26") for l in tous} | {l.get("Fichier origine") for l in tous}
+        n_purge = rech.purger_source(SOURCE_RECHERCHE, valides - {"", None})
+
     print(f"\n  indexes      : {n_ok}")
     print(f"  introuvables : {n_absent}")
+    if n_purge:
+        print(f"  anciennes fiches retirees : {n_purge}")
     print("\nPour l'envoyer sur le serveur :")
     print("  ./venv/bin/python recherche.py --exporter index_ged.jsonl")
 
@@ -1421,6 +1557,69 @@ def indexer_recherche(source, args):
 # ===========================================================================
 # PASSE 3 — application
 # ===========================================================================
+# Coupures reseau : on attend et on reessaie, puis on arrete le passage
+# proprement plutot que d'enchainer des dizaines d'echecs.
+PAUSE_RESEAU = 20
+ESSAIS_RESEAU = 3
+COUPURES_AVANT_ARRET = 3
+
+
+def erreur_reseau(message):
+    m = str(message).lower()
+    return any(k in m for k in ("appel impossible", "nameresolution", "failed to resolve",
+                                "connection aborted", "connectionerror", "max retries",
+                                "timed out", "temporary failure", "remote end closed",
+                                "network is unreachable"))
+
+
+def envoyer_avec_reprise(zc, chemin, nom, fid, ecraser, distant, prefixe):
+    """Upload avec reprise. Apres une coupure, le dossier est relu avant de
+    renvoyer : un envoi parti malgre le timeout n'est pas refait (sinon
+    WorkDrive creerait « nom(1).pdf »)."""
+    succes, rid, msg = uploader(zc, chemin, nom, fid, ecraser=ecraser)
+    essai = 1
+    while not succes and erreur_reseau(msg) and essai < ESSAIS_RESEAU:
+        print(f"{prefixe} reseau coupe, nouvel essai dans {PAUSE_RESEAU} s…")
+        time.sleep(PAUSE_RESEAU)
+        essai += 1
+        noms, ok = lister_dossier(zc, fid)
+        if ok:
+            distant[fid] = noms
+            if nom in noms:
+                return True, noms[nom], "envoye malgre la coupure (retrouve dans WorkDrive)"
+        succes, rid, msg = uploader(zc, chemin, nom, fid, ecraser=ecraser)
+    return succes, rid, msg
+
+
+def inscrire_avec_reprise(zc, donnees, prefixe):
+    """Ligne de registre avec reprise sur coupure. Leve la derniere erreur."""
+    for essai in range(1, ESSAIS_RESEAU + 1):
+        try:
+            return zc.sheet_add_row(WORKBOOK_ID, FEUILLE, donnees)
+        except Exception as exc:  # noqa: BLE001
+            if essai == ESSAIS_RESEAU or not erreur_reseau(exc):
+                raise
+            print(f"{prefixe} registre injoignable, nouvel essai dans {PAUSE_RESEAU} s…")
+            time.sleep(PAUSE_RESEAU)
+
+
+class TraceCSV(list):
+    """Liste dont chaque ajout est aussitot ecrit en fin de fichier CSV."""
+
+    def __init__(self, chemin, entete):
+        super().__init__()
+        self.chemin, self.entete = chemin, entete
+
+    def append(self, ligne):
+        super().append(ligne)
+        nouveau = not self.chemin.exists()
+        with open(self.chemin, "a", encoding="utf-8-sig", newline="") as fh:
+            w = csv.writer(fh, delimiter=";")
+            if nouveau:
+                w.writerow(self.entete)
+            w.writerow(ligne)
+
+
 def appliquer(source, args):
     racine = Path(source).expanduser().resolve()
 
@@ -1447,6 +1646,9 @@ def appliquer(source, args):
     print(f"{PROPOSITIONS.name} : {len(lignes)} ligne(s)")
 
     a_indexer, a_renommer, refusees = [], [], []
+    deja_faits = 0
+    noms_registre = charger_noms_registre()
+    liens = _liens_journal()
 
     for ligne in lignes:
         action = (ligne.get("Action") or "").strip().lower()
@@ -1457,12 +1659,32 @@ def appliquer(source, args):
             continue
 
         chemin = racine / ligne["Sous-dossier"] / ligne["Fichier origine"]
+        nom_hm = (ligne.get("Nom HM26") or "").strip()
+        if not chemin.exists() and nom_hm and nom_hm != ligne["Fichier origine"] \
+                and (racine / ligne["Sous-dossier"] / nom_hm).exists():
+            # Deja renomme par un passage precedent (eventuellement coupe).
+            if nom_hm in noms_registre or action != "indexer":
+                deja_faits += 1
+                continue
+            # Renomme et envoye, mais la ligne de registre a echoue : on
+            # la rattrape, sans renvoyer le fichier.
+            ligne["_chemin"] = racine / ligne["Sous-dossier"] / nom_hm
+            ligne["_cible"] = nom_hm
+            ligne["_rid"] = liens.get(ligne["Fichier origine"], "")
+            ligne["_rattrapage"] = True
+            a_indexer.append(ligne)
+            continue
         if not chemin.exists():
             ligne["_erreur"] = "fichier introuvable sur le disque"
             refusees.append(ligne)
             continue
 
         nom_cible = (ligne.get("Nom HM26") or "").strip()
+        if MOTIF_HM26.match(ligne["Fichier origine"]) and nom_cible != ligne["Fichier origine"]:
+            ligne["_erreur"] = ("deja au format HM, nom propose different : "
+                                "propositions.csv perime, relance --proposer")
+            refusees.append(ligne)
+            continue
         if not MOTIF_HM26.match(nom_cible):
             ligne["_erreur"] = f"nom non conforme a la norme : {nom_cible}"
             refusees.append(ligne)
@@ -1487,8 +1709,13 @@ def appliquer(source, args):
         a_indexer = a_indexer[:limite]
         a_renommer = a_renommer[:limite]
 
-    print(f"\n  a indexer   {len(a_indexer):>4}")
+    n_rattrapage = sum(1 for l in a_indexer if l.get("_rattrapage"))
+    print(f"\n  a indexer   {len(a_indexer) - n_rattrapage:>4}")
+    if n_rattrapage:
+        print(f"  a completer {n_rattrapage:>4}   (deja envoyes, ligne de registre manquante)")
     print(f"  a renommer  {len(a_renommer):>4}")
+    if deja_faits:
+        print(f"  deja faits  {deja_faits:>4}   (renommes et envoyes par un passage precedent)")
     print(f"  refusees    {len(refusees):>4}")
 
     if refusees:
@@ -1548,8 +1775,14 @@ def appliquer(source, args):
             return
 
     horodatage = time.strftime("%Y-%m-%d %H:%M:%S")
-    journal, renommages = [], []
+    # Ecrits ligne par ligne : une coupure (reseau, Ctrl+C, batterie) au
+    # 60e fichier ne fait pas perdre la trace des 59 premiers.
+    journal = TraceCSV(JOURNAL, ["Horodatage", "Fichier origine", "Action",
+                                 "resource_id", "Upload", "Index", "Message"])
+    renommages = TraceCSV(RENOMMAGES, ["Horodatage", "Ancien chemin", "Nouveau chemin"])
     n_renomme = n_upload = n_index = n_echec = 0
+    coupures = 0
+    arret_reseau = False
 
     # --- Renommage seul -------------------------------------------------
     for i, ligne in enumerate(a_renommer, 1):
@@ -1588,35 +1821,62 @@ def appliquer(source, args):
         msg = ""
         etat_up = etat_idx = "saute"
 
-        if not sans_upload:
-            if cible_nom in index_distant.get(fid, set()) and not ecraser:
-                print(f"{prefixe} deja dans WorkDrive, saute : {cible_nom[:50]}")
-                journal.append([horodatage, ligne["Fichier origine"], "indexer", "",
-                                "saute", "saute", "deja dans WorkDrive"])
-                continue
-            succes, rid, msg = uploader(zc, chemin, cible_nom, fid, ecraser=ecraser)
-            etat_up = "ok" if succes else "ECHEC"
-            if not succes:
-                n_echec += 1
-                print(f"{prefixe} ECHEC upload {cible_nom[:42]} — {msg}")
-                journal.append([horodatage, ligne["Fichier origine"], "indexer", "",
-                                etat_up, etat_idx, msg])
+        distant = index_distant.get(fid, {})
+        if ligne.get("_rattrapage"):
+            # Fichier deja envoye : on retrouve son lien, on ne le renvoie pas.
+            rid = ligne.get("_rid") or distant.get(cible_nom, "")
+            etat_up = "deja"
+        elif not sans_upload:
+            if cible_nom in distant and not ecraser:
+                # Envoye par un passage coupe avant d'avoir tout consigne :
+                # on reprend son lien et on termine le travail.
+                rid = distant.get(cible_nom, "")
+                etat_up = "deja"
+                msg = "deja dans WorkDrive, lien repris"
+            else:
+                succes, rid, msg = envoyer_avec_reprise(zc, chemin, cible_nom, fid,
+                                                        ecraser, index_distant, prefixe)
+                etat_up = "ok" if succes else "ECHEC"
+                if not succes:
+                    n_echec += 1
+                    print(f"{prefixe} ECHEC upload {cible_nom[:42]} — {msg}")
+                    journal.append([horodatage, ligne["Fichier origine"], "indexer", "",
+                                    etat_up, etat_idx, msg])
+                    time.sleep(PAUSE_UPLOAD)
+                    if erreur_reseau(msg):
+                        coupures += 1
+                        if coupures >= COUPURES_AVANT_ARRET:
+                            arret_reseau = True
+                            break
+                    continue
+                n_upload += 1
+                coupures = 0
                 time.sleep(PAUSE_UPLOAD)
-                continue
-            n_upload += 1
-            time.sleep(PAUSE_UPLOAD)
 
-        if not sans_index:
+        if not sans_index and cible_nom in noms_registre:
+            etat_idx = "deja"
+        elif not sans_index:
             donnees = valeurs_registre(ligne, rid, deposant)
             try:
-                zc.sheet_add_row(WORKBOOK_ID, FEUILLE, donnees)
+                inscrire_avec_reprise(zc, donnees, prefixe)
                 etat_idx = "ok"
                 n_index += 1
+                noms_registre.add(cible_nom)
             except Exception as exc:  # noqa: BLE001
                 etat_idx = "ECHEC"
                 n_echec += 1
                 msg = (msg + " / " + str(exc)[:150]).strip(" /")
                 print(f"{prefixe} ECHEC registre {cible_nom[:42]} — {exc}")
+                # Fichier envoye mais pas inscrit : on garde son ancien nom,
+                # la prochaine relance reprendra son lien et l'inscrira.
+                journal.append([horodatage, ligne["Fichier origine"], "indexer", rid,
+                                etat_up, etat_idx, msg])
+                if erreur_reseau(exc):
+                    coupures += 1
+                    if coupures >= COUPURES_AVANT_ARRET:
+                        arret_reseau = True
+                        break
+                continue
             else:
                 try:
                     nouveau = not REGISTRE.exists()
@@ -1653,25 +1913,11 @@ def appliquer(source, args):
         journal.append([horodatage, ligne["Fichier origine"], "indexer", rid,
                         etat_up, etat_idx, msg])
 
-    # --- Traces ---------------------------------------------------------
-    if journal:
-        nouveau = not JOURNAL.exists()
-        with open(JOURNAL, "a", encoding="utf-8-sig", newline="") as fh:
-            w = csv.writer(fh, delimiter=";")
-            if nouveau:
-                w.writerow(["Horodatage", "Fichier origine", "Action",
-                            "resource_id", "Upload", "Index", "Message"])
-            w.writerows(journal)
-
-    if renommages:
-        nouveau = not RENOMMAGES.exists()
-        with open(RENOMMAGES, "a", encoding="utf-8-sig", newline="") as fh:
-            w = csv.writer(fh, delimiter=";")
-            if nouveau:
-                w.writerow(["Horodatage", "Ancien chemin", "Nouveau chemin"])
-            w.writerows(renommages)
-
     print("\n" + "=" * 52)
+    if arret_reseau:
+        print("  ARRET : connexion perdue plusieurs fois de suite.")
+        print("  Rien n'est perdu. Relance la meme commande quand le reseau revient :")
+        print("  elle reprendra la ou elle s'est arretee.\n")
     print(f"  renommages    : {n_renomme}")
     print(f"  uploads       : {n_upload}")
     print(f"  lignes ajoutees au registre : {n_index}")
@@ -1724,6 +1970,194 @@ def annuler_renommage():
 
 
 # ===========================================================================
+# Annulation d'un passage complet (envoi WorkDrive + registre + renommage)
+# ===========================================================================
+def _passages():
+    """Horodatages des passages --appliquer, avec leur nombre d'envois."""
+    if not JOURNAL.exists():
+        return []
+    with open(JOURNAL, "r", encoding="utf-8-sig") as f:
+        lignes = list(csv.DictReader(f, delimiter=";"))
+    annules = {l["resource_id"] for l in lignes if l.get("Action") == "annule"}
+    compte = defaultdict(int)
+    for l in lignes:
+        if l.get("Action") != "annule" and l.get("resource_id") \
+                and l["resource_id"] not in annules:
+            compte[l["Horodatage"]] += 1
+    return sorted(compte.items())
+
+
+def corbeille_workdrive(zc, rid):
+    """Envoie un fichier WorkDrive a la corbeille (restaurable 30 jours)."""
+    url = f"{base_workdrive()}/files/{rid}"
+    corps = {"data": {"attributes": {"status": "51"}, "type": "files"}}
+    h = dict(entetes(zc))
+    h.update({"Content-Type": "application/json", "Accept": "application/vnd.api+json"})
+    try:
+        r = requests.patch(url, headers=h, json=corps, timeout=40)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"appel impossible : {exc}"
+    if r.status_code in (200, 202, 204):
+        return True, ""
+    return False, f"HTTP {r.status_code} {r.text[:200]}"
+
+
+def supprimer_ligne_sheet(zc, colonne, valeur):
+    """Supprime la ligne du registre Zoho Sheet dont `colonne` vaut `valeur`."""
+    url = (f"https://sheet.zoho.com/api/v2/{WORKBOOK_ID}"
+           f"?method=worksheet.records.delete")
+    h = dict(entetes(zc))
+    h["Content-Type"] = "application/x-www-form-urlencoded"
+    donnees = {
+        "worksheet_name": FEUILLE,
+        "criteria": f'"{colonne}"="{valeur}"',
+        "first_match_only": "true",
+        "delete_rows": "true",
+    }
+    try:
+        r = requests.post(url, headers=h, data=donnees, timeout=40)
+        corps = r.json()
+    except Exception as exc:  # noqa: BLE001
+        return False, f"appel impossible : {exc}"
+    if r.status_code == 200 and corps.get("status") == "success":
+        return True, ""
+    return False, str(corps)[:200]
+
+
+def annuler_envoi(horodatage, args):
+    """Defait un passage --appliquer : fichiers WorkDrive a la corbeille,
+    lignes retirees du registre (Sheet et CSV), anciens noms remis sur le
+    poste, fiches retirees du moteur de recherche."""
+    if not horodatage:
+        passages = _passages()
+        print("Passages --appliquer enregistres (horodatage, envois) :")
+        for h, n in passages:
+            print(f"  {h}   {n} envoi(s)")
+        if passages:
+            print(f'\nExemple : --annuler-envoi "{passages[-1][0]}"')
+        return
+
+    with open(JOURNAL, "r", encoding="utf-8-sig") as f:
+        journal = list(csv.DictReader(f, delimiter=";"))
+    deja = {l["resource_id"] for l in journal if l.get("Action") == "annule"}
+    envois = [l for l in journal if l.get("Horodatage") == horodatage
+              and l.get("Action") != "annule" and l.get("resource_id")
+              and l["resource_id"] not in deja]
+
+    renoms = []
+    if RENOMMAGES.exists():
+        with open(RENOMMAGES, "r", encoding="utf-8-sig") as f:
+            renoms = [l for l in csv.reader(f, delimiter=";")][1:]
+    a_restaurer = [l for l in renoms if len(l) >= 3 and l[0] == horodatage]
+
+    if not envois and not a_restaurer:
+        print(f"Rien a annuler pour {horodatage}.")
+        print("Lance --annuler-envoi sans valeur pour voir les passages.")
+        return
+
+    # Noms publies : ceux du registre local pour ces resource_id
+    rids = {l["resource_id"] for l in envois}
+    noms_publies = set()
+    lignes_registre, entete = [], []
+    if REGISTRE.exists():
+        with open(REGISTRE, "r", encoding="utf-8-sig") as f:
+            tout = list(csv.reader(f, delimiter=";"))
+        entete, lignes_registre = (tout[0], tout[1:]) if tout else ([], [])
+        for l in lignes_registre:
+            if any(rid in ";".join(l) for rid in rids):
+                noms_publies.add(l[0])
+    noms_publies |= {Path(l[2]).name for l in a_restaurer}
+
+    mapping = mapper_colonnes() or SCHEMA_DEFAUT
+    col_lien = next((e for e, c in mapping if c == "lien"), "Lien Zoho")
+
+    print(f"\n=== ANNULATION DU PASSAGE {horodatage} ===\n")
+    print(f"  fichiers WorkDrive a mettre a la corbeille : {len(envois)}")
+    print(f"  lignes du registre a retirer               : {len(envois)}")
+    print(f"  fichiers a remettre a leur ancien nom      : {len(a_restaurer)}")
+    for nom in sorted(noms_publies):
+        print(f"    - {nom[:90]}")
+
+    if "--forcer" not in args:
+        rep = input("\nAnnuler ce passage ? (oui/non) ").strip().lower()
+        if rep not in ("oui", "o", "yes", "y"):
+            print("Abandon. Rien n'a ete touche.")
+            return
+
+    zc = connecteur() if envois else None
+    rapport = []
+    a_la_main = []
+    for l in envois:
+        rid = l["resource_id"]
+        ok_wd, msg_wd = corbeille_workdrive(zc, rid)
+        time.sleep(PAUSE_UPLOAD)
+        ok_sh, msg_sh = supprimer_ligne_sheet(
+            zc, col_lien, f"https://workdrive.zoho.com/file/{rid}")
+        time.sleep(PAUSE_SHEET)
+        etat = f"WorkDrive {'ok' if ok_wd else 'ECHEC'} / registre {'ok' if ok_sh else 'ECHEC'}"
+        print(f"  {l['Fichier origine'][:55]:55} {etat}")
+        if not ok_wd:
+            print(f"      WorkDrive : {msg_wd}")
+        if not ok_sh:
+            print(f"      Sheet : {msg_sh}")
+            a_la_main.append(rid)
+        rapport.append([time.strftime("%Y-%m-%d %H:%M:%S"), l["Fichier origine"],
+                        "annule", rid, "corbeille" if ok_wd else "ECHEC",
+                        "retire" if ok_sh else "ECHEC",
+                        f"annulation du passage {horodatage}"])
+
+    # Registre local : on retire les lignes de ces envois
+    if lignes_registre and rids:
+        gardees = [l for l in lignes_registre if not any(rid in ";".join(l) for rid in rids)]
+        if len(gardees) != len(lignes_registre):
+            with open(REGISTRE, "w", encoding="utf-8-sig", newline="") as f:
+                w = csv.writer(f, delimiter=";")
+                w.writerow(entete)
+                w.writerows(gardees)
+
+    # Anciens noms sur le poste
+    restaures = 0
+    restes = []
+    for l in reversed(a_restaurer):
+        ancien, nouveau = Path(l[1]), Path(l[2])
+        if nouveau.exists() and not ancien.exists():
+            try:
+                nouveau.rename(ancien)
+                restaures += 1
+                continue
+            except OSError as exc:
+                print(f"  ECHEC renommage : {exc}")
+        restes.append(l)
+    if a_restaurer:
+        autres = [l for l in renoms if l not in a_restaurer] + list(reversed(restes))
+        with open(RENOMMAGES, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(["Horodatage", "Ancien chemin", "Nouveau chemin"])
+            w.writerows(autres)
+
+    # Moteur de recherche
+    retirees = 0
+    rech = module_recherche()
+    if rech is not None and hasattr(rech, "supprimer"):
+        retirees = rech.supprimer(sorted(noms_publies))
+
+    if rapport:
+        with open(JOURNAL, "a", encoding="utf-8-sig", newline="") as f:
+            csv.writer(f, delimiter=";").writerows(rapport)
+
+    print("\n" + "=" * 52)
+    print(f"  a la corbeille WorkDrive : {sum(1 for r in rapport if r[4] == 'corbeille')}")
+    print(f"  retirees du registre     : {sum(1 for r in rapport if r[5] == 'retire')}")
+    print(f"  anciens noms remis       : {restaures}")
+    print(f"  fiches de recherche      : {retirees} retiree(s)")
+    if a_la_main:
+        print("\n  A supprimer A LA MAIN dans le registre Zoho Sheet (colonne "
+              f"« {col_lien} ») :")
+        for rid in a_la_main:
+            print(f"    https://workdrive.zoho.com/file/{rid}")
+
+
+# ===========================================================================
 # Programme principal
 # ===========================================================================
 def valeur_option(args, nom, defaut=None):
@@ -1743,6 +2177,11 @@ def main():
 
     if "--annuler-renommage" in args:
         annuler_renommage()
+        return
+
+    if "--annuler-envoi" in args:
+        h = valeur_option(args, "--annuler-envoi")
+        annuler_envoi(h if h and not h.startswith("--") else None, args)
         return
 
     source = valeur_option(args, "--source")
