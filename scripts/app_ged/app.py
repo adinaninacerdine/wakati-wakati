@@ -531,6 +531,7 @@ def index():
         correspondant = (request.form.get('correspondant') or '').strip()
         besoin_signature = request.form.get('signature') in ('on', 'true', '1')
         reponse_attendue = request.form.get('reponse_attendue', 'normale')
+        recu_le = (request.form.get('recu_le') or '').strip()
 
         # Deux origines possibles : un courrier deja signe qui attend dans
         # a_classer/, ou un depot manuel classique.
@@ -628,7 +629,7 @@ def index():
                     fichier_local, nouveau_nom, permalink, sens,
                     meta={"service": service, "type_doc": type_doc,
                           "date_doc": date_doc, "objet": objet,
-                          "correspondant": correspondant,
+                          "correspondant": correspondant, "recu_le": recu_le,
                           "chemin_pdf": str(chemin_temp)},
                     urgence=reponse_attendue)
 
@@ -725,7 +726,7 @@ def index():
         with open(FICHIER_REGISTRE, mode='r', encoding='utf-8-sig') as f:
             lignes = list(csv.reader(f, delimiter=';'))
             if len(lignes) > 1:
-                registre = list(reversed(lignes[1:]))[:10]
+                registre = [l for l in reversed(lignes[1:]) if l and l[0]][:10]
 
     # Courriers signes en attente de classement
     a_classer = lister_a_classer()
@@ -760,6 +761,7 @@ def soumettre():
         correspondant = (request.form.get('correspondant') or '').strip()
         deposant = request.form.get('deposant', '').strip() or "Non précisé"
         reponse_attendue = request.form.get('reponse_attendue', 'normale')
+        recu_le = (request.form.get('recu_le') or '').strip() if sens == 'entrant' else ''
 
         if not fichier or fichier.filename == '':
             flash("Veuillez sélectionner un fichier PDF.", "error")
@@ -798,6 +800,7 @@ def soumettre():
                         "sens": sens,
                         "correspondant": correspondant,
                         "deposant": deposant,
+                        "recu_le": recu_le,
                     })
                     # Courrier recu : ouverture du suivi de reponse
                     # (echeance, texte extrait pour l'assistance IA).
@@ -805,7 +808,7 @@ def soumettre():
                         courrier.enregistrer_entrant(ref, {
                             "service": service, "type_doc": type_doc,
                             "date_doc": date_doc, "objet": objet,
-                            "correspondant": correspondant,
+                            "correspondant": correspondant, "recu_le": recu_le,
                         }, chemin_temp, source="visa", urgence=reponse_attendue)
                     flash(f"✅ Transmis à la Direction Générale pour visa. "
                           f"Référence : {ref}", "success")
@@ -955,10 +958,13 @@ def indicateurs_visa():
             res["retours"] += 1
 
         # Delai entre depot et visa — la mesure du gain de la digitalisation.
-        if d.get("vise_le") and d.get("depose_le"):
+        debut = d.get("recu_le") or d.get("depose_le")
+        if d.get("vise_le") and debut:
             try:
+                # Depuis l'arrivee du courrier quand elle a ete saisie,
+                # sinon depuis le depot dans l'application.
                 ecart = (datetime.fromisoformat(d["vise_le"])
-                         - datetime.fromisoformat(d["depose_le"]))
+                         - datetime.fromisoformat(debut))
                 delais.append(ecart.total_seconds() / 3600)
             except (ValueError, TypeError):
                 pass
@@ -980,6 +986,28 @@ def indicateurs_visa():
         res["delai_moyen"] = (f"{moyenne:.0f} h" if moyenne < 48
                               else f"{moyenne / 24:.1f} j")
 
+    return res
+
+
+def derniers_archives(n=10):
+    """Les n derniers documents du registre local, les plus récents d'abord."""
+    if not os.path.exists(FICHIER_REGISTRE):
+        return []
+    try:
+        with open(FICHIER_REGISTRE, 'r', encoding='utf-8-sig') as f:
+            lignes = list(csv.reader(f, delimiter=';'))[1:]
+    except Exception:  # noqa: BLE001
+        return []
+    res = []
+    for l in reversed(lignes):
+        if not l or not l[0]:
+            continue
+        l = l + [''] * (12 - len(l))
+        res.append({"nom": l[0], "service": l[1], "type": l[2], "date": l[3],
+                    "objet": l[5], "lien": l[9] if l[9].startswith('http') else '',
+                    "sens": l[10], "correspondant": l[11]})
+        if len(res) >= n:
+            break
     return res
 
 
@@ -1072,6 +1100,9 @@ def calculer_indicateurs():
         'correspondants': classer(correspondants, 5),
         'mois_libelle': aujourdhui.strftime('%m/%Y'),
         'courrier': courrier.compteurs() if COURRIER_DISPONIBLE else None,
+        'delais': courrier.kpi_delais() if COURRIER_DISPONIBLE else None,
+        'vie': courrier.vie_courriers(10) if COURRIER_DISPONIBLE else [],
+        'derniers': derniers_archives(10),
     }
 
 

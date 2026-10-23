@@ -99,6 +99,13 @@
 
           {% if courrier_actif %}
           <div class="champ" id="s_bloc_reponse">
+            <div class="rang">
+              <div class="champ">
+                <label for="s_recu">Arrivé le</label>
+                <input type="datetime-local" id="s_recu" name="recu_le" class="heure-arrivee">
+                <div class="aide">Date et heure de réception du courrier (indicateurs de délai).</div>
+              </div>
+              <div class="champ">
             <label for="s_reponse">Réponse attendue</label>
             <select id="s_reponse" name="reponse_attendue">
               <option value="normale">Oui — délai normal (48 h)</option>
@@ -106,6 +113,8 @@
               <option value="aucune">Non, pas de réponse attendue</option>
             </select>
             <div class="aide">Fixe l'échéance de réponse et les relances dans #ged-notifications.</div>
+              </div>
+            </div>
           </div>
           {% endif %}
 
@@ -390,13 +399,19 @@
           </div>
 
           {% if courrier_actif %}
-          <div class="champ" id="a_bloc_reponse">
+          <div class="rang" id="a_bloc_reponse">
+            <div class="champ">
+              <label for="a_recu">Arrivé le</label>
+              <input type="datetime-local" id="a_recu" name="recu_le" class="heure-arrivee">
+            </div>
+            <div class="champ">
             <label for="a_reponse">Réponse attendue</label>
             <select id="a_reponse" name="reponse_attendue">
               <option value="normale">Oui — délai normal (48 h)</option>
               <option value="urgente">Oui — urgent (24 h)</option>
               <option value="aucune">Non, pas de réponse attendue</option>
             </select>
+            </div>
           </div>
           {% endif %}
 
@@ -407,28 +422,29 @@
 
     <section class="bloc">
       <h2>Derniers documents archivés</h2>
-      <table>
+      <div class="table-defilante">
+      <table class="table-registre">
         <thead>
           <tr>
-            <th>Nom du fichier</th><th>Service</th><th>Date</th>
-            <th>Correspondant</th><th>Objet</th><th>Document</th>
+            <th>Document</th><th>Correspondant</th><th>Date</th><th>Service</th><th></th>
           </tr>
         </thead>
         <tbody>
           {% for row in registre %}
-            {% if not loop.last %}
             <tr>
-              <td>{{ row[0] }}</td>
-              <td>{{ row[1] }}</td>
-              <td>{{ row[3] }}</td>
+              <td class="col-doc">
+                <div class="doc-objet">{{ row[5] or '(sans objet)' }}</div>
+                <div class="doc-nom">{{ row[0] }}</div>
+              </td>
               <td>{% if row|length > 11 %}{{ row[11] }}{% endif %}</td>
-              <td>{{ row[5] }}</td>
-              <td><a href="{{ row[9] }}" target="_blank" rel="noopener">Ouvrir</a></td>
+              <td class="col-date">{{ row[3] }}</td>
+              <td>{{ row[1] }}</td>
+              <td>{% if row|length > 9 and row[9] and row[9].startswith('http') %}<a href="{{ row[9] }}" target="_blank" rel="noopener">Ouvrir</a>{% endif %}</td>
             </tr>
-            {% endif %}
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </section>
 
     <div class="pied">
@@ -439,6 +455,16 @@
 </div>
 
 <script>
+// « Arrivé le » : pré-rempli avec l'heure locale, modifiable.
+document.addEventListener('DOMContentLoaded', function () {
+    var d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    var maintenant = d.toISOString().slice(0, 16);
+    document.querySelectorAll('input.heure-arrivee').forEach(function (c) {
+        if (!c.value) { c.value = maintenant; }
+    });
+});
+
 // Le libellé s'adapte au sens : on ne saisit pas un expéditeur sur un
 // courrier sortant. Un seul champ, deux significations.
 function majLibelle(prefixe) {
@@ -457,7 +483,7 @@ function majLibelle(prefixe) {
     if (blocRep) {
         // L'archivage d'un courrier signé déjà suivi n'ouvre pas de nouveau suivi.
         var depuisSigne = prefixe === 'a' && document.getElementById('fichier_local').value;
-        blocRep.style.display = (entrant && !depuisSigne) ? 'block' : 'none';
+        blocRep.style.display = (entrant && !depuisSigne) ? '' : 'none';
     }
 }
 

@@ -237,7 +237,8 @@ SIGNATAIRES_DEFAUT = [
      "email": ""},
     {"code": "DAF", "fonction": "Le Directeur Administratif et Financier",
      "nom": "Soilihi Hamadi Ali", "email": ""},
-    {"code": "DT", "fonction": "Le Directeur Technique", "nom": "", "email": ""},
+    {"code": "DT", "fonction": "Le Directeur Technique", "nom": "Aidine Ali Mouignihazi",
+     "email": ""},
     {"code": "DCOM", "fonction": "La Direction Commerciale", "nom": "", "email": ""},
     {"code": "SC", "fonction": "Le Service Client", "nom": "", "email": ""},
 ]
@@ -446,6 +447,18 @@ def _maintenant():
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _horodatage(valeur):
+    """« 2026-10-23T09:15 » (champ datetime-local) -> ISO, ou "" si invalide
+    ou dans le futur."""
+    try:
+        d = datetime.fromisoformat(str(valeur or "").strip())
+    except ValueError:
+        return ""
+    if d > datetime.now() + timedelta(minutes=5):
+        return ""
+    return d.isoformat(timespec="seconds")
+
+
 def _id_court(prefixe):
     return datetime.now().strftime(f"{prefixe}-%Y%m%d-%H%M%S-%f")[:-3]
 
@@ -591,6 +604,12 @@ def parametres():
             p[cle] = copy.deepcopy(val)
     for cle, val in PARAMETRES_DEFAUT["ia"].items():
         p["ia"].setdefault(cle, val)
+    # Noms ajoutés depuis (demande du DG, octobre 2026) : complétés seulement
+    # quand la fiche enregistrée n'en a pas, jamais écrasés.
+    defauts = {s["code"]: s for s in SIGNATAIRES_DEFAUT}
+    for s in p.get("signataires", []):
+        if not (s.get("nom") or "").strip() and defauts.get(s.get("code"), {}).get("nom"):
+            s["nom"] = defauts[s["code"]]["nom"]
     return p
 
 
@@ -866,7 +885,9 @@ def enregistrer_entrant(entrant_id, meta, chemin_pdf=None, source="visa",
     try:
         assurer_banque()
         urgence = urgence if urgence in URGENCES else "normale"
-        recu_le = _maintenant()
+        # Heure d'arrivée saisie au dépôt (« Arrivé le ») : elle fait partir
+        # l'échéance et sert aux indicateurs de délai. À défaut : maintenant.
+        recu_le = _horodatage(meta.get("recu_le")) or _maintenant()
         cid, _ = reconnaitre(meta.get("correspondant", ""))
         code_cat = (correspondant(cid) or {}).get("categorie", "")
         suivi = {
@@ -993,6 +1014,7 @@ def lier_archive(fichier_local, nouveau_nom, lien, sens, meta=None,
                     e = ents.get(rep.get("entrant_id", ""))
                     if e:
                         e["statut_reponse"] = "repondu"
+                        e["repondu_le"] = _maintenant()
                         _ecrire(F_ENTRANTS, ents)
                         colonnes["Échéance"] = date_courte(e.get("echeance"))
                         if e.get("nom_archive"):
@@ -1085,7 +1107,10 @@ def variables_reponse(rep):
     fiche = correspondant(rep.get("correspondant_id")) or {}
     cat = categorie(fiche.get("categorie") or rep.get("categorie", "")) or {}
     sig = signataire(rep.get("signataire", "")) or {}
-    appel = fiche.get("formule_appel") or "Madame, Monsieur"
+    # Formule d'appel : celle choisie dans le projet, sinon celle de la fiche
+    # du correspondant. Jamais de « Madame, Monsieur » par défaut (demande du
+    # DG) : une zone à compléter oblige à choisir la bonne civilité.
+    appel = (rep.get("formule_appel") or fiche.get("formule_appel") or "").strip().rstrip(",")
     return {
         "civilite": fiche.get("civilite", ""),
         "formule_appel": appel,
@@ -1221,6 +1246,7 @@ def creer_reponse(champs, entrant_id=""):
         "signataire": (champs.get("signataire") or fiche.get("signataire")
                        or cat.get("signataire") or "DG"),
         "copies": champs.get("copies", fiche.get("copies", "")).strip(),
+        "formule_appel": (champs.get("formule_appel") or fiche.get("formule_appel") or "").strip(),
         "corps": "",
         "statut": "brouillon",
         "visa_ref": "",
@@ -1896,15 +1922,62 @@ def anonymiser(texte):
     return texte
 
 
-_SYSTEME = """Tu rédiges pour Huri Money SA (WAKATI Mobile Money, Union des Comores) le PARAGRAPHE CENTRAL d'un courrier administratif en français.
+_SYSTEME = """Tu rédiges pour Huri Money SA (WAKATI Mobile Money, Union des Comores) le CORPS CENTRAL d'un courrier administratif en français. L'en-tête, la formule d'appel, la formule de politesse et la signature sont ajoutés par l'application.
 
-Règles absolues :
-- Écris uniquement le paragraphe central (1 à 3 paragraphes courts) : pas d'en-tête, pas de formule d'appel, pas de formule de politesse, pas de signature, pas de titre.
+FORME — c'est un courrier administratif :
+- Paragraphes courts : une idée par paragraphe, 2 à 3 phrases au plus. Sépare chaque paragraphe par une ligne vide. Jamais de bloc de texte d'un seul tenant.
+- Phrases courtes (25 mots au plus), claires, à la voix active. « Nous » au nom de Huri Money, vouvoiement du destinataire.
+- Concis : 2 à 3 paragraphes suffisent le plus souvent. Développe davantage seulement si le courrier reçu soulève plusieurs points distincts ou si les consignes le demandent ; consacre alors un paragraphe à chaque point.
+- Ordre : d'abord la réponse ou la décision, ensuite les éléments utiles (conditions, pièces, modalités), enfin la suite concrète (interlocuteur, délai, prochaine étape) si les consignes la donnent.
+- Énumérations (pièces à fournir, documents transmis, étapes) : une ligne par élément, commençant par « - », terminée par « ; », la dernière par « . ». Précède-la d'une phrase d'introduction.
+- Pas de formules creuses (« nous tenons à vous informer que », « il convient de noter que »), pas de répétition de l'objet, pas de remerciements en cascade.
+
+FOND — règles absolues :
+- Écris uniquement le corps central : pas d'en-tête, pas de « Madame, Monsieur », pas de formule de politesse, pas de signature, pas de titre.
 - Réponds aux points soulevés dans le courrier reçu, en suivant les consignes de l'agent.
 - N'invente JAMAIS un montant, une date, un délai, un nom, une référence ou un engagement. Toute information nécessaire mais absente s'écrit exactement [à compléter : description courte].
 - Ne promets rien que les consignes ne prévoient pas.
-- Respecte le registre indiqué. Pas de Markdown, pas de listes à puces sauf si la nature du courrier l'exige (pièces demandées, documents transmis) : utilise alors des tirets simples.
-- Texte brut uniquement."""
+- WAKATI est un service de paiement mobile : n'écris jamais « banque » pour le désigner.
+- Texte brut uniquement : pas de Markdown, pas de gras, pas de titres.
+
+EXEMPLE DE FORME (le fond dépend toujours du courrier reçu) :
+Nous donnons une suite favorable à votre demande d'adhésion au réseau de points de vente WAKATI.
+
+Pour constituer votre dossier, nous vous remercions de nous transmettre :
+- une copie du registre de commerce ;
+- la carte d'identité du gérant ;
+- [à compléter : autre pièce exigée].
+
+Notre service commercial vous contactera pour organiser la formation de votre personnel de caisse."""
+
+
+_FIN_PHRASE = re.compile(r"(?<=[.!?…])\s+(?=[A-ZÀÂÉÈÊÎÔÛÇ«\[])")
+
+
+def aerer(texte, max_phrases=3, max_car=480):
+    """Garantit des paragraphes courts séparés par une ligne vide, même si
+    le modèle a rendu un seul bloc. Les énumérations (« - … ») restent
+    groupées sous leur phrase d'introduction."""
+    texte = re.sub(r"\r\n?", "\n", texte or "").strip()
+    blocs = [b.strip() for b in re.split(r"\n\s*\n", texte) if b.strip()]
+    sortie = []
+    for bloc in blocs:
+        lignes = bloc.splitlines()
+        if any(l.lstrip().startswith(("-", "–")) for l in lignes) or len(lignes) > 1 \
+                and all(len(l) < 120 for l in lignes):
+            sortie.append("\n".join(l.rstrip() for l in lignes))
+            continue
+        phrases = _FIN_PHRASE.split(" ".join(l.strip() for l in lignes))
+        courant = []
+        for ph in phrases:
+            if courant and (len(courant) >= max_phrases
+                            or len(" ".join(courant + [ph])) > max_car):
+                sortie.append(" ".join(courant))
+                courant = []
+            courant.append(ph)
+        if courant:
+            sortie.append(" ".join(courant))
+    return "\n\n".join(sortie)
 
 
 def _nettoyer_sortie(texte, valeurs):
@@ -1924,7 +1997,7 @@ def _nettoyer_sortie(texte, valeurs):
     while lignes and re.search(r"(veuillez agréer|nous vous prions d'agréer|"
                                r"cordialement|salutations)", lignes[-1], re.I):
         lignes = lignes[:-1]
-    return "\n".join(lignes).strip()
+    return aerer("\n".join(lignes).strip())
 
 
 def _alertes(sortie, sources):
@@ -2143,6 +2216,95 @@ def compteurs():
                 "a_valider": 0, "en_signature": 0}
 
 
+def _duree(heures):
+    if heures is None:
+        return None
+    return f"{heures:.0f} h" if heures < 48 else f"{heures / 24:.1f} j"
+
+
+def kpi_delais():
+    """Délais mesurés depuis l'heure d'arrivée du courrier.
+
+    - réponse : arrivée -> réponse archivée (entrants « Répondu ») ;
+    - part des réponses archivées avant l'échéance.
+    """
+    durees, dans_delai, n = [], 0, 0
+    for e in entrants().values():
+        if e.get("statut_reponse") != "repondu" or not e.get("repondu_le"):
+            continue
+        try:
+            arrivee = datetime.fromisoformat(e["recu_le"])
+            fin = datetime.fromisoformat(e["repondu_le"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        n += 1
+        durees.append((fin - arrivee).total_seconds() / 3600)
+        try:
+            if e.get("echeance") and fin <= datetime.fromisoformat(e["echeance"]):
+                dans_delai += 1
+        except ValueError:
+            pass
+    return {
+        "delai_reponse": _duree(sum(durees) / len(durees)) if durees else None,
+        "taux_dans_delais": round(dans_delai * 100 / n) if n else None,
+        "nb_repondus": n,
+    }
+
+
+def _date_heure(iso):
+    try:
+        d = datetime.fromisoformat(str(iso))
+    except (ValueError, TypeError):
+        return ""
+    return d.strftime("%d/%m %H:%M") if (d.hour or d.minute) else d.strftime("%d/%m")
+
+
+def vie_courriers(n=10):
+    """Les n derniers courriers reçus, étape par étape : arrivée, visa du DG,
+    réponse rédigée, validée, archivée. Pour la frise du tableau de bord."""
+    visas = _visas()
+    reps = reponses()
+    liste = sorted(entrants().values(), key=lambda e: e.get("recu_le", ""), reverse=True)[:n]
+    resultat = []
+    maintenant = datetime.now()
+    for e in liste:
+        d = visas.get(e.get("visa_ref", ""), {})
+        rep = reps.get(e.get("reponse_ref", ""), {})
+        histo = {h.get("action"): h.get("le") for h in rep.get("historique", [])}
+        sans_reponse = e.get("statut_reponse") == "sans_objet"
+        etapes = [
+            ("Arrivé", e.get("recu_le")),
+            ("Visé DG", d.get("vise_le") if d.get("statut") in ("vise", "approuve") else ""),
+        ]
+        if not sans_reponse:
+            etapes += [
+                ("Réponse rédigée", rep.get("cree_le")),
+                ("Soumise au DG", histo.get("Resoumis à validation") or histo.get("Soumis à validation")),
+                ("Bon pour signature", histo.get("En signature")),
+                ("Répondu", e.get("repondu_le") or histo.get("Archivé")),
+            ]
+        else:
+            etapes.append(("Classé", e.get("recu_le") if e.get("nom_archive") else ""))
+        try:
+            retard = (not sans_reponse and e.get("statut_reponse") != "repondu"
+                      and e.get("echeance")
+                      and datetime.fromisoformat(e["echeance"]) < maintenant)
+        except ValueError:
+            retard = False
+        fiche = correspondant(e.get("correspondant_id")) or {}
+        resultat.append({
+            "objet": e.get("objet") or "(sans objet)",
+            "organisation": fiche.get("organisation") or e.get("correspondant") or "—",
+            "statut": STATUTS_ENTRANT.get(e.get("statut_reponse"), ""),
+            "echeance": _date_heure(e.get("echeance")) if not sans_reponse else "",
+            "retard": bool(retard),
+            "lien": e.get("lien", ""),
+            "etapes": [{"nom": nom, "le": _date_heure(le), "fait": bool(le)}
+                       for nom, le in etapes],
+        })
+    return resultat
+
+
 # ---------------------------------------------------------------------------
 # Présentation
 # ---------------------------------------------------------------------------
@@ -2221,8 +2383,9 @@ def liste():
 def _champs_preparation(entrant_id):
     """Valeurs initiales du formulaire de préparation."""
     p = parametres()
-    champs = {"nature": "AR", "service": p.get("service_defaut", "DGA"),
-              "date_reception": datetime.now().date().isoformat()}
+    champs = {"nature": "AR" if entrant_id else "LIBRE",
+              "service": p.get("service_defaut", "DGA"),
+              "date_reception": datetime.now().date().isoformat() if entrant_id else ""}
     contexte = {"entrant": None, "texte": "", "observations": "", "suggestions": []}
     if not entrant_id:
         return champs, contexte
@@ -2263,14 +2426,16 @@ def preparer():
         champs = {k: request.form.get(k, "") for k in (
             "correspondant_id", "correspondant_libre", "categorie", "nature",
             "modele_id", "service", "objet", "ref_entrant", "date_entrant",
-            "date_reception", "objet_entrant", "consignes", "signataire", "copies")}
+            "date_reception", "objet_entrant", "consignes", "signataire", "copies",
+            "formule_appel")}
         if (champs["nature"] != "DEC" and not champs["correspondant_id"]
                 and not champs["correspondant_libre"].strip()):
             flash("Choisissez un destinataire dans l'annuaire ou saisissez-le.", "error")
             return redirect(url_for("courrier.preparer", entrant=entrant_id))
         rep = creer_reponse(champs, entrant_id)
-        flash("Projet de réponse créé. Relisez-le, complétez les zones "
-              "[à compléter], puis soumettez-le à validation.", "success")
+        flash(("Projet de réponse créé." if entrant_id else "Projet de courrier créé.")
+              + " Relisez-le, complétez les zones listées en rouge sous le texte, "
+              "puis soumettez-le à validation.", "success")
         return redirect(url_for("courrier.edition", ref=rep["ref"]))
 
     champs, contexte = _champs_preparation(entrant_id)
@@ -2280,7 +2445,8 @@ def preparer():
             flash("Une réponse est déjà en préparation pour ce courrier.", "success")
             return redirect(url_for("courrier.edition", ref=rep["ref"]))
 
-    return render_template("courrier_preparer.html", page="courrier",
+    return render_template("courrier_preparer.html", page=("courrier" if entrant_id else "nouveau"),
+                           formules_appel=FORMULES_APPEL,
                            champs=champs, ctx=contexte, entrant_id=entrant_id,
                            annuaire=correspondants(),
                            modeles=modeles_disponibles(est_responsable_ged()),
@@ -2314,12 +2480,26 @@ def edition(ref):
         modifiable=rep.get("statut") in ("brouillon", "retourne"),
         ia_ok=ia_ok, ia_raison=ia_raison, ia_modele=parametres()["ia"].get("modele"),
         pc_vide=PC_VIDE,
+        formules_appel=FORMULES_APPEL,
+        appel_affiche=variables_reponse(rep).get("formule_appel", ""),
         **_contexte_commun())
 
 
 _CHAMPS_EDITABLES = ("objet", "ref_entrant", "date_entrant", "date_reception",
                      "objet_entrant", "consignes", "signataire", "copies",
-                     "service", "corps", "correspondant_id", "correspondant_libre")
+                     "service", "corps", "correspondant_id", "correspondant_libre",
+                     "formule_appel")
+
+# Propositions de la liste « Formule d'appel » (saisie libre possible)
+FORMULES_APPEL = [
+    "Monsieur", "Madame", "Madame, Monsieur",
+    "Monsieur le Directeur Général", "Madame la Directrice Générale",
+    "Monsieur le Directeur", "Madame la Directrice",
+    "Monsieur le Ministre", "Madame la Ministre",
+    "Monsieur le Gouverneur", "Monsieur le Président", "Madame la Présidente",
+    "Monsieur le Secrétaire Général", "Madame la Secrétaire Générale",
+    "Monsieur le Coordonnateur", "Madame la Coordonnatrice",
+]
 
 
 @bp_courrier.route("/<ref>/enregistrer", methods=["POST"])
@@ -2333,9 +2513,16 @@ def enregistrer(ref):
             flash("Ce projet n'est plus modifiable : il est dans le circuit de "
                   "validation.", "error")
             return redirect(url_for("courrier.edition", ref=ref))
+        ancien_appel = variables_reponse(rep).get("formule_appel", "")
         for champ in _CHAMPS_EDITABLES:
             if champ in request.form:
                 rep[champ] = request.form.get(champ, "").replace("\r\n", "\n")
+        rep["formule_appel"] = (rep.get("formule_appel") or "").strip().rstrip(",")
+        # Nouvelle formule d'appel : on la reporte partout où l'ancienne
+        # figurait (ligne d'appel et formule de politesse).
+        nouvel_appel = variables_reponse(rep).get("formule_appel", "")
+        if ancien_appel and nouvel_appel and ancien_appel != nouvel_appel:
+            rep["corps"] = (rep.get("corps") or "").replace(ancien_appel, nouvel_appel)
         fiche = correspondant(rep.get("correspondant_id"))
         if fiche:
             rep["categorie"] = fiche.get("categorie", rep.get("categorie", ""))

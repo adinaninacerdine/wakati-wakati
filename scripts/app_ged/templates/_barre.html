@@ -1,6 +1,6 @@
 {# Barre laterale partagee — modifier ICI et nulle part ailleurs.
    Chaque page passe la variable `page` :
-   recherche | courriers | tableau | visa | courrier | banque | parametres #}
+   recherche | courriers | tableau | visa | nouveau | courrier | banque | parametres #}
 <aside class="barre">
   <div class="marque-zone">
     <div class="marque">W A K A T I</div>
@@ -26,7 +26,10 @@
     </a>
 
     {% if courrier_actif %}
-    <div class="rubrique">Réponses</div>
+    <div class="rubrique">Rédaction</div>
+    <a class="item {% if page == 'nouveau' %}actif{% endif %}" href="{{ url_for('courrier.preparer') }}">
+      <span class="ico">＋</span> Nouveau courrier
+    </a>
     <a class="item {% if page == 'courrier' %}actif{% endif %}" href="{{ url_for('courrier.liste') }}">
       <span class="ico">✉</span> Courrier de réponse
       {% if cpt_courrier and cpt_courrier.en_retard %}<span class="pastille">{{ cpt_courrier.en_retard }}</span>{% endif %}

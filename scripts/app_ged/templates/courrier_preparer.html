@@ -103,7 +103,7 @@
 
           <div class="rang">
             <div class="champ">
-              <label for="f_nature">Nature de la réponse</label>
+              <label for="f_nature">Nature {% if ctx.entrant %}de la réponse{% else %}du courrier{% endif %}</label>
               <select id="f_nature" name="nature" onchange="majModele()">
                 {% for code, lib in natures.items() %}
                 <option value="{{ code }}" {% if champs.nature == code %}selected{% endif %}>{{ lib }}</option>
@@ -139,6 +139,18 @@
             </div>
           </div>
 
+          <div class="champ">
+            <label for="f_appel">Formule d'appel</label>
+            <input type="text" id="f_appel" name="formule_appel" value="{{ champs.formule_appel or '' }}"
+                   list="liste_appels_p" placeholder="Monsieur, Madame, Monsieur le Directeur Général…" autocomplete="off">
+            <datalist id="liste_appels_p">
+              {% for f in formules_appel %}<option value="{{ f }}">{% endfor %}
+            </datalist>
+            <div class="aide">Laissez vide pour reprendre celle de la fiche du destinataire ; sinon elle sera à compléter.</div>
+          </div>
+
+          <details {% if ctx.entrant %}open{% endif %} class="bloc-recu">
+          <summary>{% if ctx.entrant %}Courrier reçu auquel on répond{% else %}Ce courrier répond à un courrier reçu (facultatif){% endif %}</summary>
           <div class="rang">
             <div class="champ">
               <label for="f_ref">Référence du courrier reçu</label>
@@ -160,6 +172,7 @@
             <label for="f_objet_e">Objet du courrier reçu</label>
             <input type="text" id="f_objet_e" name="objet_entrant" value="{{ champs.objet_entrant or '' }}">
           </div>
+          </details>
 
           <div class="rang">
             <div class="champ">
@@ -177,12 +190,12 @@
           </div>
 
           <div class="champ">
-            <label for="f_consignes">Consignes pour la réponse</label>
+            <label for="f_consignes">Consignes pour {% if ctx.entrant %}la réponse{% else %}le courrier{% endif %}</label>
             <textarea id="f_consignes" name="consignes"
                       placeholder="Points à traiter, décision prise, éléments à joindre… Utilisés par l'assistance IA.">{{ champs.consignes or '' }}</textarea>
           </div>
 
-          <button type="submit" class="pleine">Générer le projet de réponse</button>
+          <button type="submit" class="pleine">Générer le projet {% if ctx.entrant %}de réponse{% else %}de courrier{% endif %}</button>
         </form>
       </div>
     </section>

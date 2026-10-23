@@ -99,9 +99,23 @@
         <div class="valeur">{{ kpi.visa.delai_moyen or '—' }}</div>
         <div class="etiq">Délai moyen de visa</div>
         <div class="note">
-          Entre la transmission et la décision
+          De l'arrivée du courrier à la décision du DG
         </div>
       </div>
+
+      {% if kpi.delais %}
+      <div class="carte">
+        <div class="valeur">{{ kpi.delais.delai_reponse or '—' }}</div>
+        <div class="etiq">Délai moyen de réponse</div>
+        <div class="note">De l'arrivée à la réponse archivée{% if kpi.delais.nb_repondus %} &middot; {{ kpi.delais.nb_repondus }} courrier(s){% endif %}</div>
+      </div>
+
+      <div class="carte {% if kpi.delais.taux_dans_delais is not none and kpi.delais.taux_dans_delais < 80 %}alerte{% endif %}">
+        <div class="valeur">{% if kpi.delais.taux_dans_delais is not none %}{{ kpi.delais.taux_dans_delais }} %{% else %}—{% endif %}</div>
+        <div class="etiq">Réponses dans les délais</div>
+        <div class="note">Échéance de 48 h, 24 h si urgent</div>
+      </div>
+      {% endif %}
 
     </div>
 
@@ -129,6 +143,59 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
+
+    {% if kpi.vie %}
+    <section class="bloc" style="margin-bottom:22px;">
+      <h2><span>Vie des 10 derniers courriers reçus</span>
+        <a class="lien-action" href="{{ url_for('courrier.liste') }}">Courrier de réponse</a></h2>
+      <div class="corps">
+        {% for c in kpi.vie %}
+        <div class="vie">
+          <div class="vie-tete">
+            <div class="vie-objet">{{ c.objet }}</div>
+            <div class="vie-meta">{{ c.organisation }}
+              {% if c.statut %} &middot; {{ c.statut }}{% endif %}
+              {% if c.echeance %} &middot; <span class="{% if c.retard %}vie-retard{% endif %}">échéance {{ c.echeance }}{% if c.retard %} — dépassée{% endif %}</span>{% endif %}
+            </div>
+          </div>
+          <ol class="frise">
+            {% for e in c.etapes %}
+            <li class="{% if e.fait %}fait{% endif %}">
+              <span class="point"></span>
+              <span class="nom">{{ e.nom }}</span>
+              <span class="date">{{ e.le or '—' }}</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if kpi.derniers %}
+    <section class="bloc" style="margin-bottom:22px;">
+      <h2><span>10 derniers documents archivés</span>
+        <a class="lien-action" href="{{ url_for('recherche.ecran') if recherche_active else url_for('index') }}">Rechercher</a></h2>
+      <div class="table-defilante">
+      <table class="table-registre">
+        <thead><tr><th>Document</th><th>Correspondant</th><th>Date</th><th>Service</th><th></th></tr></thead>
+        <tbody>
+          {% for d in kpi.derniers %}
+          <tr>
+            <td class="col-doc"><div class="doc-objet">{{ d.objet or '(sans objet)' }}</div>
+              <div class="doc-nom">{{ d.nom }}</div></td>
+            <td>{{ d.correspondant }}</td>
+            <td class="col-date">{{ d.date }}</td>
+            <td>{{ d.service }}</td>
+            <td>{% if d.lien %}<a href="{{ d.lien }}" target="_blank" rel="noopener">Ouvrir</a>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </section>
     {% endif %}
 
     <div class="duo">

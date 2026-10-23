@@ -211,7 +211,7 @@ def deposer_pour_visa(chemin_pdf, metadonnees):
         "action_note": "",
     }
     # Metadonnees propres au module Courrier : signataire, projet d'origine.
-    for cle in ("signataire", "reponse_ref"):
+    for cle in ("signataire", "reponse_ref", "recu_le"):
         if metadonnees.get(cle):
             donnees[ref][cle] = metadonnees[cle]
     _sauver(donnees)

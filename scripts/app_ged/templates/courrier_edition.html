@@ -76,11 +76,25 @@
                   <label for="e_sig">Signataire</label>
                   <select id="e_sig" name="signataire">
                     {% for s in signataires %}
-                    <option value="{{ s.code }}" {% if rep.signataire == s.code %}selected{% endif %}>{{ s.fonction }}</option>
+                    <option value="{{ s.code }}" {% if rep.signataire == s.code %}selected{% endif %}>{{ s.fonction }}{% if s.nom %} — {{ s.nom }}{% endif %}</option>
                     {% endfor %}
                   </select>
                 </div>
               </div>
+
+              {% if not decision %}
+              <div class="champ">
+                <label for="e_appel">Formule d'appel</label>
+                <input type="text" id="e_appel" name="formule_appel" value="{{ appel_affiche }}"
+                       list="liste_appels" placeholder="Monsieur, Madame, Monsieur le Directeur Général…"
+                       autocomplete="off">
+                <datalist id="liste_appels">
+                  {% for f in formules_appel %}<option value="{{ f }}">{% endfor %}
+                </datalist>
+                <div class="aide">Choisissez la civilité exacte du destinataire. Elle est reprise
+                  en tête du courrier et dans la formule de politesse à l'enregistrement.</div>
+              </div>
+              {% endif %}
 
               <div class="rang">
                 <div class="champ">
