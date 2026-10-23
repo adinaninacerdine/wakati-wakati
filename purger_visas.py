@@ -1,46 +1,56 @@
 #!/usr/bin/env python3
 """
-purger_visas.py — désengorge la file « à viser » du DG avant la mise en production
-=================================================================================
-Les documents en attente de visa déposés AVANT une date donnée quittent
-l'écran Visa Direction et passent dans la section « Signés, à archiver » de
-l'écran Courriers. La responsable GED les y classe comme d'habitude
-(bouton Archiver : numéro, dossier WorkDrive, registre). Les plus récents
-restent chez le DG.
+purger_visas.py — remet à zéro les files du DG avant la mise en production
+=========================================================================
+Trois nettoyages, combinables, tous avec aperçu, sauvegarde et retour arrière :
 
-Rien n'est détruit ni archivé automatiquement :
+  1. --garder-depuis AAAA-MM-JJ
+     Les documents « à viser » déposés AVANT cette date quittent l'écran
+     Visa Direction ; les plus récents restent chez le DG.
+
+  2. --approuves
+     La section « Approuvés — en attente de signature manuscrite » est vidée.
+
+  Dans les deux cas, les documents passent dans « Signés, à archiver »
+  (écran Courriers) : la responsable GED les classe elle-même, bouton
+  Archiver (numéro, dossier WorkDrive, registre). Rien n'est archivé
+  automatiquement.
+
+  3. --supprimer X [X …]
+     Retire DÉFINITIVEMENT de la GED des documents de test : ni file du DG,
+     ni « à archiver ». X = une référence VISA-… lue dans l'aperçu, ou un mot
+     de l'objet ou du correspondant. Le PDF est gardé dans la sauvegarde.
+
+Détails :
   - le PDF passe de a_viser/ à a_classer/ (préfixe ASIGNER_, celui que
-    l'écran de classement reconnaît), une copie est gardée en sauvegarde ;
+    l'écran de classement reconnaît) ; une copie reste dans la sauvegarde ;
   - la fiche de visas.json est conservée avec le statut « retire_file » :
     l'écran d'archivage retrouve ainsi le sens et le correspondant ;
   - un projet de réponse qui attendait la validation du DG redevient
     « brouillon », son numéro de courrier sortant est libéré ;
-  - --restaurer remet les documents non encore classés dans la file du DG.
+  - --restaurer remet tout ce qui n'a pas encore été archivé.
 
 Le courrier fictif de la démonstration se retire à part, entièrement :
   docker exec ged-wakati python /app/nettoyer_demo.py --mot Mdjihari --confirm
 
 USAGE (dans le conteneur, sur le serveur)
 -----------------------------------------
-  # aperçu : garde chez le DG ce qui a été déposé depuis le 21 octobre 2026
-  docker exec ged-wakati python /app/purger_visas.py --garder-depuis 2026-10-21
+  # aperçu
+  docker exec ged-wakati python /app/purger_visas.py --approuves \\
+      --garder-depuis 2026-10-21 --exclure VISA-20261019-114530
 
-  # application
-  docker exec ged-wakati python /app/purger_visas.py --garder-depuis 2026-10-21 --confirm
-
-  # retour arrière (documents pas encore archivés)
-  docker exec ged-wakati python /app/purger_visas.py --restaurer /app/a_viser/_retires_20261023-1405
+  # application : ajouter --confirm à la même commande
+  # retour arrière
+  docker exec ged-wakati python /app/purger_visas.py --restaurer /app/a_viser/_retires_20261023-1530
 
 OPTIONS
 -------
-  --garder-depuis AAAA-MM-JJ   date de dépôt à partir de laquelle on garde (obligatoire)
-  --exclure X [X …]            garde chez le DG ces documents même s'ils sont anciens.
-                               X = une référence VISA-… lue dans l'aperçu, ou un mot de
-                               l'objet ou du correspondant (ex. BCC). Répétable.
-  --avec-retournes             déplace aussi les documents « retournés au service »
-                               antérieurs à la date (par défaut : seulement « à viser »)
-  --avec-signature             retire aussi les anciennes entrées « En attente de
-                               signature » (en_attente.json) antérieures à la date
+  --garder-depuis AAAA-MM-JJ   « à viser » : restent chez le DG les dépôts depuis cette date
+  --exclure X [X …]            « à viser » anciens à laisser quand même chez le DG
+  --approuves                  vide la section « Approuvés » vers « Signés, à archiver »
+  --supprimer X [X …]          documents de test à retirer définitivement
+  --avec-retournes             déplace aussi les « retournés au service » antérieurs à la date
+  --avec-signature             retire aussi les anciennes entrées « En attente de signature »
   --confirm                    applique (sinon : aperçu, rien n'est modifié)
 """
 
@@ -91,9 +101,9 @@ def norm(texte):
     return "".join(c for c in t if not unicodedata.combining(c)).lower()
 
 
-def exclu(ref, d, exclusions):
-    """Vrai si le document est désigné par --exclure (référence ou mot)."""
-    for x in exclusions:
+def designe(ref, d, liste):
+    """Vrai si le document est désigné par une référence VISA-… ou un mot."""
+    for x in liste or []:
         if x.upper().startswith("VISA-"):
             if ref.upper() == x.upper():
                 return True
@@ -112,26 +122,6 @@ def nom_a_classer(fichier):
         else f"ASIGNER_{fichier}"
 
 
-# ---------------------------------------------------------------------------
-def selectionner(visas, limite, avec_retournes, exclusions=()):
-    statuts = STATUTS_A_VISER + (("retourne",) if avec_retournes else ())
-    retires, gardes, sans_date, exclus = {}, {}, {}, {}
-    for ref, d in visas.items():
-        if d.get("statut") not in statuts:
-            continue
-        j = date_depot(d)
-        if j is None:
-            sans_date[ref] = d
-        elif j < limite:
-            if exclu(ref, d, exclusions):
-                exclus[ref] = d
-            else:
-                retires[ref] = d
-        else:
-            gardes[ref] = d
-    return retires, gardes, sans_date, exclus
-
-
 def afficher(titre, fiches):
     print(f"\n{titre} : {len(fiches)}")
     for ref, d in sorted(fiches.items(), key=lambda x: str(x[1].get("depose_le", ""))):
@@ -140,58 +130,94 @@ def afficher(titre, fiches):
               f"{(d.get('correspondant') or '—')[:20]:20} {(d.get('objet') or '')[:44]}")
 
 
+# ---------------------------------------------------------------------------
 def purger(args):
-    try:
-        limite = date.fromisoformat(args.garder_depuis)
-    except ValueError:
-        print("ERREUR : --garder-depuis attend une date AAAA-MM-JJ.")
-        sys.exit(1)
+    limite = None
+    if args.garder_depuis:
+        try:
+            limite = date.fromisoformat(args.garder_depuis)
+        except ValueError:
+            print("ERREUR : --garder-depuis attend une date AAAA-MM-JJ.")
+            sys.exit(1)
 
     visas = visa._charger()
-    retires, gardes, sans_date, exclus = selectionner(visas, limite, args.avec_retournes,
-                                                       args.exclure or [])
-    inconnues = [x for x in (args.exclure or []) if x.upper().startswith("VISA-")
-                 and x.upper() not in {r.upper() for r in visas}]
+    toutes_refs = {r.upper() for r in visas}
+    inconnues = [x for x in (args.exclure or []) + (args.supprimer or [])
+                 if x.upper().startswith("VISA-") and x.upper() not in toutes_refs]
 
-    attente = lire_json(FICHIER_ATTENTE, {}) if args.avec_signature else {}
+    # --- 1. File « à viser » -------------------------------------------
+    file_retires, file_gardes, sans_date, exclus = {}, {}, {}, {}
+    if limite:
+        statuts = STATUTS_A_VISER + (("retourne",) if args.avec_retournes else ())
+        for ref, d in visas.items():
+            if d.get("statut") not in statuts:
+                continue
+            j = date_depot(d)
+            if j is None:
+                sans_date[ref] = d
+            elif j < limite and not designe(ref, d, args.exclure):
+                file_retires[ref] = d
+            elif j < limite:
+                exclus[ref] = d
+            else:
+                file_gardes[ref] = d
+
+    # --- 2. Section « Approuvés » --------------------------------------
+    approuves = {r: d for r, d in visas.items() if d.get("statut") == "approuve"} \
+        if args.approuves else {}
+
+    # --- 3. Tests à supprimer (parmi tout ce qui est encore en circuit) --
+    en_circuit = {r: d for r, d in visas.items()
+                  if d.get("statut") in STATUTS_A_VISER + ("approuve", "retourne")}
+    a_supprimer = {r: d for r, d in en_circuit.items() if designe(r, d, args.supprimer)}
+
+    a_deplacer = {r: d for r, d in {**file_retires, **approuves}.items() if r not in a_supprimer}
+
+    attente = lire_json(FICHIER_ATTENTE, {}) if args.avec_signature and limite else {}
     attente_retires = {r: m for r, m in attente.items()
                        if (jour(m.get("soumis_le")) or limite) < limite}
 
+    concernes = set(a_deplacer) | set(a_supprimer)
     reponses = courrier.reponses() if courrier else {}
-    reps_liees = [k for k, x in reponses.items()
-                  if x.get("visa_ref") in retires and x.get("statut") == "a_valider"]
+    reps_liees = [k for k, x in reponses.items() if x.get("visa_ref") in concernes
+                  and x.get("statut") in ("a_valider", "en_signature")]
 
+    # --- Aperçu ----------------------------------------------------------
     total = sum(1 for d in visas.values() if d.get("statut") in STATUTS_A_VISER)
-    print(f"\n=== FILE DE VISA DU DG — {total} document(s) à viser au total ===")
-    print(f"Restent chez le DG : les dépôts depuis le {limite.strftime('%d/%m/%Y')} inclus.")
-    afficher("PASSENT DANS « SIGNÉS, À ARCHIVER » (classement par la responsable GED)", retires)
-    afficher("RESTENT CHEZ LE DG", gardes)
-    if args.exclure:
-        afficher("RESTENT CHEZ LE DG PAR --exclure", exclus)
-        if inconnues:
-            print(f"\n(!) Référence(s) introuvable(s) dans la file : {', '.join(inconnues)}")
-    if sans_date:
-        afficher("SANS DATE DE DÉPÔT (restent chez le DG, à voir à la main)", sans_date)
-    if not args.avec_retournes:
-        vieux_retours = sum(1 for d in visas.values() if d.get("statut") == "retourne"
-                            and (date_depot(d) or limite) < limite)
-        if vieux_retours:
-            print(f"\n(i) {vieux_retours} document(s) « retourné(s) au service » antérieur(s) "
-                  "à la date restent en place. Ajoute --avec-retournes pour les déplacer aussi.")
-    if args.avec_signature:
+    nb_app = sum(1 for d in visas.values() if d.get("statut") == "approuve")
+    print(f"\n=== FILES DU DG — {total} à viser, {nb_app} approuvé(s) en attente de signature ===")
+    if limite:
+        print(f"File « à viser » : restent chez le DG les dépôts depuis le {limite.strftime('%d/%m/%Y')}.")
+        afficher("À VISER ANCIENS -> « SIGNÉS, À ARCHIVER »",
+                 {r: d for r, d in file_retires.items() if r not in a_supprimer})
+        afficher("À VISER QUI RESTENT CHEZ LE DG", {**file_gardes, **exclus})
+        if sans_date:
+            afficher("SANS DATE DE DÉPÔT (restent chez le DG, à voir à la main)", sans_date)
+    if args.approuves:
+        afficher("APPROUVÉS -> « SIGNÉS, À ARCHIVER »",
+                 {r: d for r, d in approuves.items() if r not in a_supprimer})
+    if args.supprimer:
+        afficher("TESTS SUPPRIMÉS DÉFINITIVEMENT (copie gardée en sauvegarde)", a_supprimer)
+    if inconnues:
+        print(f"\n(!) Référence(s) introuvable(s) : {', '.join(inconnues)}")
+    if args.avec_signature and limite:
         print(f"\n« En attente de signature » à retirer : {len(attente_retires)} sur {len(attente)}")
     if reps_liees:
         print(f"\n{len(reps_liees)} projet(s) de réponse redeviendront « brouillon ».")
+    reste_app = nb_app - len(approuves) if args.approuves else nb_app - \
+        sum(1 for r in a_supprimer if visas[r].get("statut") == "approuve")
+    reste_file = total - sum(1 for r in concernes if visas[r].get("statut") in STATUTS_A_VISER)
+    print(f"\nAprès application : {reste_file} à viser chez le DG, {reste_app} approuvé(s).")
 
-    if not retires and not attente_retires:
-        print("\nRien à déplacer.")
+    if not a_deplacer and not a_supprimer and not attente_retires:
+        print("\nRien à faire.")
         return
     if not args.confirm:
-        print("\nAperçu seulement. Relance avec --confirm pour appliquer.")
+        print("\nAperçu seulement. Relance la même commande avec --confirm pour appliquer.")
         return
 
     # --- Sauvegarde complète avant toute modification -------------------
-    horo = datetime.now().strftime("%Y%m%d-%H%M")
+    horo = datetime.now().strftime("%Y%m%d-%H%M%S")
     dossier = visa.DOSSIER_A_VISER / f"_retires_{horo}"
     (dossier / "pdf").mkdir(parents=True, exist_ok=True)
     shutil.copy2(visa.FICHIER_VISAS, dossier / "visas_avant.json")
@@ -199,39 +225,45 @@ def purger(args):
         shutil.copy2(FICHIER_ATTENTE, dossier / "en_attente_avant.json")
     if courrier and courrier.F_REPONSES.exists():
         shutil.copy2(courrier.F_REPONSES, dossier / "reponses_avant.json")
-    originaux = copy.deepcopy(retires)
+    originaux = copy.deepcopy({r: visas[r] for r in concernes})
 
-    # --- PDF : a_viser/ -> a_classer/ (copie de sauvegarde gardée) -------
+    maintenant = datetime.now().isoformat(timespec="seconds")
     visa.DOSSIER_A_CLASSER.mkdir(exist_ok=True)
-    deplaces, manquants = 0, []
-    for ref, d in retires.items():
+    deplaces, supprimes, manquants = 0, 0, []
+
+    # PDF : déplacés vers a_classer/, ou rangés dans la sauvegarde (tests)
+    for ref in concernes:
+        d = visas[ref]
         src = visa.DOSSIER_A_VISER / d.get("fichier", "")
         if not d.get("fichier") or not src.exists():
             manquants.append(ref)
             continue
         shutil.copy2(src, dossier / "pdf" / src.name)
-        shutil.move(str(src), str(visa.DOSSIER_A_CLASSER / nom_a_classer(src.name)))
-        deplaces += 1
+        if ref in a_supprimer:
+            src.unlink()
+            supprimes += 1
+        else:
+            shutil.move(str(src), str(visa.DOSSIER_A_CLASSER / nom_a_classer(src.name)))
+            deplaces += 1
 
-    # --- visas.json : la fiche reste, hors de la file du DG --------------
-    maintenant = datetime.now().isoformat(timespec="seconds")
+    # visas.json : fiches déplacées gardées (hors file), tests retirés
     visas = visa._charger()
-    for ref in retires:
+    for ref in a_deplacer:
         d = visas.get(ref)
         if d:
             d["statut_avant"] = d.get("statut", "")
             d["statut"] = STATUT_RETIRE
             d["retire_le"] = maintenant
+    for ref in a_supprimer:
+        visas.pop(ref, None)
     visa._sauver(visas)
 
-    # --- en_attente.json -------------------------------------------------
     if attente_retires:
         attente = lire_json(FICHIER_ATTENTE, {})
         for r in attente_retires:
             attente.pop(r, None)
         ecrire_json(FICHIER_ATTENTE, attente)
 
-    # --- Projets de réponse qui attendaient le DG ------------------------
     if courrier and reps_liees:
         with courrier._verrou:
             reps = courrier.reponses()
@@ -244,23 +276,24 @@ def purger(args):
                 x["numero"] = ""
                 x.setdefault("historique", []).append({
                     "le": maintenant, "par": "Nettoyage de mise en production",
-                    "action": "Retiré de la file du DG",
+                    "action": "Retiré du circuit du DG",
                     "detail": "Remis en brouillon, numéro libéré : à resoumettre si besoin."})
             courrier._ecrire(courrier.F_REPONSES, reps)
 
     ecrire_json(dossier / "retires.json", {
         "le": maintenant,
-        "garder_depuis": args.garder_depuis,
-        "visas": originaux,
+        "garder_depuis": args.garder_depuis or "",
+        "visas": {r: originaux[r] for r in a_deplacer},
+        "supprimes": {r: originaux[r] for r in a_supprimer},
         "en_attente": attente_retires,
         "reponses_en_brouillon": reps_liees,
     })
 
     print(f"\nFait : {deplaces} document(s) passé(s) dans « Signés, à archiver », "
-          f"{len(attente_retires)} « en attente de signature » retiré(s).")
+          f"{supprimes} test(s) supprimé(s), {len(attente_retires)} « en attente de signature » retiré(s).")
     if manquants:
-        print(f"(!) PDF introuvable pour : {', '.join(manquants)} — fiche marquée retirée quand même.")
-    print("La responsable GED les classe depuis l'écran Courriers, bouton Archiver.")
+        print(f"(!) PDF introuvable pour : {', '.join(manquants)} — fiche traitée quand même.")
+    print("La responsable GED classe les documents depuis l'écran Courriers, bouton Archiver.")
     print(f"Sauvegarde : {dossier}")
     print(f"Retour arrière : python purger_visas.py --restaurer {dossier}")
 
@@ -286,6 +319,14 @@ def restaurer(dossier):
             continue
         visas[ref] = original
         remis += 1
+    for ref, original in (infos.get("supprimes") or {}).items():
+        if ref in visas:
+            continue
+        sauve = dossier / "pdf" / original.get("fichier", "")
+        if sauve.exists():
+            shutil.copy2(sauve, visa.DOSSIER_A_VISER / sauve.name)
+        visas[ref] = original
+        remis += 1
     visa._sauver(visas)
     if infos.get("en_attente"):
         attente = lire_json(FICHIER_ATTENTE, {})
@@ -300,16 +341,20 @@ def restaurer(dossier):
                 if k in avant and reps.get(k, {}).get("statut") == "brouillon":
                     reps[k] = avant[k]
             courrier._ecrire(courrier.F_REPONSES, reps)
-    print(f"Remis dans la file du DG : {remis} document(s).")
+    print(f"Remis en place : {remis} document(s).")
     if deja_classes:
         print(f"Déjà archivés, laissés tels quels : {', '.join(deja_classes)}")
 
 
 def main():
-    p = argparse.ArgumentParser(description="Désengorge la file de visa du DG.")
+    p = argparse.ArgumentParser(description="Remet à zéro les files du DG.")
     p.add_argument("--garder-depuis", help="date AAAA-MM-JJ : restent chez le DG les dépôts depuis")
     p.add_argument("--exclure", nargs="+", metavar="X",
-                   help="références VISA-… ou mots à laisser chez le DG malgré leur date")
+                   help="« à viser » anciens à laisser chez le DG (référence VISA-… ou mot)")
+    p.add_argument("--approuves", action="store_true",
+                   help="vide la section « Approuvés » vers « Signés, à archiver »")
+    p.add_argument("--supprimer", nargs="+", metavar="X",
+                   help="documents de test à retirer définitivement (référence VISA-… ou mot)")
     p.add_argument("--avec-retournes", action="store_true")
     p.add_argument("--avec-signature", action="store_true")
     p.add_argument("--confirm", action="store_true")
@@ -317,7 +362,7 @@ def main():
     args = p.parse_args()
     if args.restaurer:
         restaurer(args.restaurer)
-    elif args.garder_depuis:
+    elif args.garder_depuis or args.approuves or args.supprimer:
         purger(args)
     else:
         p.print_help()
