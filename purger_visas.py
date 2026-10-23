@@ -166,9 +166,10 @@ def purger(args):
     approuves = {r: d for r, d in visas.items() if d.get("statut") == "approuve"} \
         if args.approuves else {}
 
-    # --- 3. Tests à supprimer (parmi tout ce qui est encore en circuit) --
+    # --- 3. Tests à supprimer : en circuit, ou déjà passés dans « Signés,
+    #        à archiver » par un nettoyage précédent (statut retire_file) --
     en_circuit = {r: d for r, d in visas.items()
-                  if d.get("statut") in STATUTS_A_VISER + ("approuve", "retourne")}
+                  if d.get("statut") in STATUTS_A_VISER + ("approuve", "retourne", STATUT_RETIRE)}
     a_supprimer = {r: d for r, d in en_circuit.items() if designe(r, d, args.supprimer)}
 
     a_deplacer = {r: d for r, d in {**file_retires, **approuves}.items() if r not in a_supprimer}
@@ -235,6 +236,8 @@ def purger(args):
     for ref in concernes:
         d = visas[ref]
         src = visa.DOSSIER_A_VISER / d.get("fichier", "")
+        if d.get("statut") == STATUT_RETIRE:
+            src = visa.DOSSIER_A_CLASSER / nom_a_classer(d.get("fichier", ""))
         if not d.get("fichier") or not src.exists():
             manquants.append(ref)
             continue
