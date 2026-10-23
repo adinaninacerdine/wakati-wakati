@@ -33,13 +33,21 @@ OPTIONS
                                antérieurs à la date (par défaut : seulement « à viser »)
   --avec-signature             retire aussi les anciennes entrées « En attente de
                                signature » (en_attente.json) antérieures à la date
+  --exclure X [X …]            garde ces documents même s'ils sont anciens. X = une
+                               référence VISA-… lue dans l'aperçu, ou un mot de l'objet
+                               ou du correspondant (ex. BCC, « agrément »). Répétable.
   --confirm                    applique (sinon : aperçu, rien n'est modifié)
+
+  Exemple : garder deux documents précis et tout ce qui vient de la BCC
+    docker exec ged-wakati python /app/purger_visas.py --garder-depuis 2026-10-21 \
+        --exclure VISA-20261014-101532 VISA-20261016-083010 BCC
 """
 
 import argparse
 import json
 import shutil
 import sys
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 
@@ -75,15 +83,31 @@ def ecrire_json(chemin, donnees):
     Path(chemin).write_text(json.dumps(donnees, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def norm(texte):
+    t = unicodedata.normalize("NFKD", str(texte or ""))
+    return "".join(c for c in t if not unicodedata.combining(c)).lower()
+
+
+def exclu(ref, d, exclusions):
+    """Vrai si le document est désigné par --exclure (référence ou mot)."""
+    for x in exclusions:
+        if x.upper().startswith("VISA-"):
+            if ref.upper() == x.upper():
+                return True
+        elif norm(x) in norm(d.get("objet")) or norm(x) in norm(d.get("correspondant")):
+            return True
+    return False
+
+
 def date_depot(d):
     """Date du dernier dépôt au visa (une resoumission remet le compteur)."""
     return jour(d.get("depose_le")) or jour(d.get("resoumis_le"))
 
 
 # ---------------------------------------------------------------------------
-def selectionner(visas, limite, avec_retournes):
+def selectionner(visas, limite, avec_retournes, exclusions=()):
     statuts = STATUTS_A_VISER + (("retourne",) if avec_retournes else ())
-    retires, gardes, sans_date = {}, {}, {}
+    retires, gardes, sans_date, exclus = {}, {}, {}, {}
     for ref, d in visas.items():
         if d.get("statut") not in statuts:
             continue
@@ -91,18 +115,21 @@ def selectionner(visas, limite, avec_retournes):
         if j is None:
             sans_date[ref] = d
         elif j < limite:
-            retires[ref] = d
+            if exclu(ref, d, exclusions):
+                exclus[ref] = d
+            else:
+                retires[ref] = d
         else:
             gardes[ref] = d
-    return retires, gardes, sans_date
+    return retires, gardes, sans_date, exclus
 
 
 def afficher(titre, fiches):
     print(f"\n{titre} : {len(fiches)}")
     for ref, d in sorted(fiches.items(), key=lambda x: str(x[1].get("depose_le", ""))):
         sens = "reçu" if d.get("sens") == "entrant" else "émis"
-        print(f"  {str(d.get('depose_le', ''))[:10]}  {sens:5} {d.get('statut', ''):9} "
-              f"{(d.get('correspondant') or '—')[:22]:22} {(d.get('objet') or '')[:48]}")
+        print(f"  {ref:22} {str(d.get('depose_le', ''))[:10]}  {sens:5} {d.get('statut', ''):9} "
+              f"{(d.get('correspondant') or '—')[:20]:20} {(d.get('objet') or '')[:44]}")
 
 
 def purger(args):
@@ -113,7 +140,10 @@ def purger(args):
         sys.exit(1)
 
     visas = visa._charger()
-    retires, gardes, sans_date = selectionner(visas, limite, args.avec_retournes)
+    retires, gardes, sans_date, exclus = selectionner(visas, limite, args.avec_retournes,
+                                                       args.exclure or [])
+    inconnues = [x for x in (args.exclure or []) if x.upper().startswith("VISA-")
+                 and x.upper() not in {r.upper() for r in visas}]
 
     attente = lire_json(FICHIER_ATTENTE, {}) if args.avec_signature else {}
     attente_retires = {r: m for r, m in attente.items()
@@ -130,6 +160,10 @@ def purger(args):
     print(f"On garde ce qui a été déposé depuis le {limite.strftime('%d/%m/%Y')} inclus.")
     afficher("À RETIRER", retires)
     afficher("À GARDER", gardes)
+    if args.exclure:
+        afficher("GARDÉS PAR --exclure", exclus)
+        if inconnues:
+            print(f"\n(!) Référence(s) introuvable(s) dans la file : {', '.join(inconnues)}")
     if sans_date:
         afficher("SANS DATE DE DÉPÔT (gardés, à voir à la main)", sans_date)
     if not args.avec_retournes:
@@ -269,6 +303,8 @@ def main():
     p.add_argument("--garder-depuis", help="date AAAA-MM-JJ : on garde ce qui a été déposé depuis")
     p.add_argument("--avec-retournes", action="store_true")
     p.add_argument("--avec-signature", action="store_true")
+    p.add_argument("--exclure", nargs="+", metavar="X",
+                   help="références VISA-… ou mots à garder malgré leur date")
     p.add_argument("--confirm", action="store_true")
     p.add_argument("--restaurer", metavar="DOSSIER")
     args = p.parse_args()
