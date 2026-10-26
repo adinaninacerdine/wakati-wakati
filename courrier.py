@@ -392,6 +392,13 @@ MODELES_OFFICIELS = [
 
 VERSION_BANQUE = 2
 
+PIED_MODELE = ("Ambassadeur B.P. 222, Moroni, Union de Comores     |     "
+               "Tel : + (269) 773 – 14 – 75")
+PIEDS_ANCIENS = {
+    "Huri Money S.A. — Rond-point Ambassadeur, B.P. 222, Moroni, "
+    "Union des Comores — Tél. : +269 773 14 75 — contact@wakati.km",
+}
+
 PARAMETRES_DEFAUT = {
     "signataires": SIGNATAIRES_DEFAUT,
     "service_defaut": "DGA",
@@ -402,8 +409,9 @@ PARAMETRES_DEFAUT = {
     # Variables : {annee} {numero} {signataire} {service}
     "format_reference": "N°{annee}-{numero}/{signataire}/HM",
     "format_reference_decision": "{annee}-{numero}/{signataire}/H.M",
-    "pied_de_page": ("Huri Money S.A. — Rond-point Ambassadeur, B.P. 222, Moroni, "
-                     "Union des Comores — Tél. : +269 773 14 75 — contact@wakati.km"),
+    # Pied de page du modèle officiel de lettre (Direction, octobre 2026),
+    # repris mot pour mot.
+    "pied_de_page": PIED_MODELE,
     "version_banque": 0,
     "ia": {
         "actif": True,
@@ -599,6 +607,10 @@ def modele(mid):
 
 def parametres():
     p = _lire(F_PARAMETRES, PARAMETRES_DEFAUT)
+    # Ancien pied de page par défaut : remplacé par celui du modèle officiel.
+    # Un pied saisi à la main dans les Paramètres n'est jamais touché.
+    if (p.get("pied_de_page") or "").strip() in PIEDS_ANCIENS:
+        p["pied_de_page"] = PIED_MODELE
     # Complète les clés ajoutées dans une version ultérieure.
     for cle, val in PARAMETRES_DEFAUT.items():
         if cle not in p:
@@ -1527,7 +1539,8 @@ def _papier(famille_police, filigrane_projet):
                 self.image(icone, x=(210 - ICONE_W) / 2, y=ICONE_Y, w=ICONE_W)
             self.set_y(ICONE_Y + ICONE_W + 1.8)
             self.set_font(nom_police, "", 7.5 if famille_police == "sans" else 8)
-            self.set_text_color(*GRIS)
+            # Lettre : adresse en noir, comme le modèle Word ; décision : gris.
+            self.set_text_color(*(GRIS if famille_police == "sans" else TEXTE))
             self.cell(0, 4, t(pied), align="C")
             self.set_text_color(*TEXTE)
 
