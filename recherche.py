@@ -370,7 +370,7 @@ _SYNONYMES = {
     "type_doc": ["type", "type de document", "nature", "categorie", "nature du document"],
     "date": ["date", "date du document", "date du courrier", "date courrier",
              "date d arrivee", "date de reception", "date d envoi", "date de depart",
-             "date d enregistrement"],
+             "date d enregistrement", "annee", "exercice"],
     "objet": ["objet", "objet du courrier", "intitule", "libelle", "titre", "sujet",
               "description"],
     "lien": ["lien zoho", "lien", "url", "lien workdrive", "lien du document",
@@ -384,6 +384,8 @@ _SYNONYMES = {
                "n d enregistrement", "numero d enregistrement", "reference", "ref"],
     "observations": ["observations", "observation", "remarques", "commentaire",
                      "suites a donner"],
+    "dossier": ["dossier", "chemin", "arborescence", "emplacement", "chemin du dossier",
+                "dossier parent"],
 }
 
 
@@ -478,12 +480,41 @@ def feuilles_classeur(connecteur, classeur):
     return noms
 
 
-def lignes_feuille(connecteur, classeur, feuille, taille_lot=500):
+def _score_entetes(entetes):
+    """Nombre d'intitulés de colonnes reconnus (nom, date, objet, lien…)."""
+    connus = {v for vs in _SYNONYMES.values() for v in vs}
+    connus |= {"chemin", "dossier", "taille", "extension", "emplacement"}
+    return sum(1 for e in entetes if _normaliser(e) in connus)
+
+
+def ligne_entete(connecteur, classeur, feuille, essais=10):
+    """Ligne des intitulés de colonnes : la première, ou plus bas quand la
+    feuille commence par un titre (« INDEX ARCHIVAGE 2021-2025 … »)."""
+    meilleure, score_max = 1, -1
+    for h in range(1, essais + 1):
+        try:
+            corps = _appel_sheet(connecteur, classeur, {
+                "method": "worksheet.records.fetch", "worksheet_name": feuille,
+                "header_row": h, "records_start_index": 1, "count": 3})
+        except Exception:  # noqa: BLE001
+            break
+        lot = corps.get("records") or []
+        if not lot:
+            continue
+        score = _score_entetes([k for k in lot[0] if k != "row_index"])
+        if score > score_max:
+            meilleure, score_max = h, score
+        if score >= 3:
+            break
+    return meilleure
+
+
+def lignes_feuille(connecteur, classeur, feuille, taille_lot=500, entete=1):
     debut = 1
     while True:
         corps = _appel_sheet(connecteur, classeur, {
             "method": "worksheet.records.fetch", "worksheet_name": feuille,
-            "header_row": 1, "records_start_index": debut, "count": taille_lot})
+            "header_row": entete, "records_start_index": debut, "count": taille_lot})
         lot = corps.get("records") or []
         for ligne in lot:
             yield ligne
@@ -504,7 +535,7 @@ def _depuis_ligne_archive(ligne, source, feuille, rang):
             inverse.setdefault(v, champ)
     d, autres, liens = {}, [], []
     for entete, valeur in ligne.items():
-        if valeur in (None, ""):
+        if valeur in (None, "") or entete == "row_index":
             continue
         valeur = str(valeur).strip()
         if valeur.startswith("http"):
@@ -527,11 +558,20 @@ def _depuis_ligne_archive(ligne, source, feuille, rang):
     lien = d.get("lien", "") if str(d.get("lien", "")).startswith("http") else ""
     lien = lien or (liens[0] if liens else "")
     correspondant = d.get("correspondant") or d.get("expediteur") or d.get("destinataire") or ""
+    if not correspondant and d.get("dossier"):
+        # Le dernier dossier porte souvent le nom du correspondant
+        # (…/Courriers sortants/BCC) ; on saute années et mois.
+        for part in reversed([p.strip() for p in re.split(r"[/\\>]", d["dossier"]) if p.strip()]):
+            n = _normaliser(part)
+            if not re.fullmatch(r"(19|20)\d{2}|\d+|janvier|fevrier|mars|avril|mai|juin|"
+                                r"juillet|aout|septembre|octobre|novembre|decembre", n):
+                correspondant = part
+                break
     return {"nom": nom, "service": d.get("service", ""), "type_doc": d.get("type_doc", ""),
             "date": date, "annee": date[:4], "sens": _sens_lisible(d.get("sens", "")),
             "correspondant": correspondant, "objet": d.get("objet", ""), "lien": lien,
             "source": source,
-            "mots_cles": " ".join([str(feuille), d.get("numero", ""),
+            "mots_cles": " ".join([str(feuille), d.get("numero", ""), d.get("dossier", ""),
                                    d.get("observations", "")] + autres)}
 
 
@@ -550,9 +590,10 @@ def depuis_sheet_externe(ref, feuilles=None, libelle="", apercu=False, afficher=
     n = 0
     for feuille in feuilles:
         nb_feuille, exemples, entetes = 0, [], []
-        for rang, ligne in enumerate(lignes_feuille(zc, classeur, feuille), 1):
+        h = ligne_entete(zc, classeur, feuille)
+        for rang, ligne in enumerate(lignes_feuille(zc, classeur, feuille, entete=h), 1):
             if not entetes:
-                entetes = list(ligne.keys())
+                entetes = [k for k in ligne.keys() if k != "row_index"]
             doc = _depuis_ligne_archive(ligne, source, feuille, rang)
             if not doc:
                 continue
@@ -564,7 +605,8 @@ def depuis_sheet_externe(ref, feuilles=None, libelle="", apercu=False, afficher=
                 n += 1
         if apercu:
             n += nb_feuille
-            afficher(f"\n--- Feuille « {feuille} » : {nb_feuille} document(s)")
+            afficher(f"\n--- Feuille « {feuille} » : {nb_feuille} document(s) "
+                     f"(intitulés de colonnes en ligne {h})")
             inverse = {v: c for c, vs in _SYNONYMES.items() for v in vs}
             for e in entetes:
                 afficher(f"    {str(e)[:32]:32} -> {inverse.get(_normaliser(e), '(mot-clé)')}")
