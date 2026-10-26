@@ -2176,12 +2176,15 @@ def rediger_paragraphe(rep, consignes_sup=""):
 # ---------------------------------------------------------------------------
 # Notifications et relances
 # ---------------------------------------------------------------------------
-def _cliq(titre, lignes, url=""):
+def _cliq(titre, lignes, url="", tableau=None):
+    """Carte dans #ged-notifications. `tableau` (liste de (champ, valeur))
+    remplace le tableau standard Type / Service / Correspondant / Date."""
     notif = _CTX.get("notifier")
     if not notif:
         return
     try:
         notif({
+            "lignes": tableau,
             "titre": titre,
             "numero": lignes.get("Statut", ""),
             "nom_fichier": lignes.get("Objet", ""),
@@ -3163,9 +3166,12 @@ def rdv():
                     x.setdefault("rdv", []).append(trace)
                     _ecrire(F_ENTRANTS, ents)
         _cliq("📅 Rendez-vous programmé", {
-            "Statut": "RDV", "Objet": f.get("titre", "") or objet,
-            "Correspondant": organisation or "-",
-            "Nature": sig.get("fonction", ""), "Date": quand}, info.get("lien", ""))
+            "Statut": "RDV", "Objet": f.get("titre", "") or objet},
+            info.get("lien", ""),
+            tableau=[("Avec", sig.get("fonction", "")),
+                     ("Correspondant", organisation or "-"),
+                     ("Lieu", f.get("lieu", "") or "-"),
+                     ("Date", quand)])
         qui = re.sub(r"^Le ", "du ", re.sub(r"^La ", "de la ", sig.get("fonction", "")))
         flash(f"Rendez-vous programmé dans l'agenda {qui} : {quand}."
               + (" La date a été reportée dans la lettre." if complete else "")

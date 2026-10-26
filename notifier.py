@@ -220,6 +220,18 @@ def _build_cliq_payload(doc):
     # « titre » et « libelle_deposant » sont facultatifs : le module Courrier
     # s'en sert pour ses relances et ses projets à valider.
     titre = doc.get("titre")
+    # « lignes » (facultatif) : liste de (champ, valeur) qui remplace le
+    # tableau standard Type / Service / Déposant / Date (ex. carte de RDV).
+    if doc.get("lignes"):
+        rows = [{"Champ": str(c), "Valeur": str(v or "-")} for c, v in doc["lignes"]]
+    else:
+        rows = [
+            {"Champ": "Type", "Valeur": str(doc.get("type_doc", "-"))},
+            {"Champ": "Service", "Valeur": str(doc.get("service", "-"))},
+            {"Champ": str(doc.get("libelle_deposant", "Déposant")),
+             "Valeur": str(doc.get("deposant", "-"))},
+            {"Champ": "Date", "Valeur": str(doc.get("date", "-"))},
+        ]
     payload = {
         "text": (f"*{titre}*" if titre
                  else f"*Nouveau document déposé* — {doc.get('service', 'N/A')}"),
@@ -232,13 +244,7 @@ def _build_cliq_payload(doc):
             "title": "Détails" if titre else "Détails du dépôt",
             "data": {
                 "headers": ["Champ", "Valeur"],
-                "rows": [
-                    {"Champ": "Type", "Valeur": str(doc.get("type_doc", "-"))},
-                    {"Champ": "Service", "Valeur": str(doc.get("service", "-"))},
-                    {"Champ": str(doc.get("libelle_deposant", "Déposant")),
-                     "Valeur": str(doc.get("deposant", "-"))},
-                    {"Champ": "Date", "Valeur": str(doc.get("date", "-"))},
-                ],
+                "rows": rows,
             },
         }],
     }
