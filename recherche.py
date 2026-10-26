@@ -28,6 +28,10 @@ LIGNE DE COMMANDE (depuis la racine du projet)
   ./venv/bin/python recherche.py --chercher "banque centrale agrément"
   ./venv/bin/python recherche.py --depuis-registre            # registre_2026.csv
   ./venv/bin/python recherche.py --depuis-sheet               # registre Zoho Sheet
+  ./venv/bin/python recherche.py --archives-sheet "<lien du classeur>" --libelle "2021-2025" --apercu
+  ./venv/bin/python recherche.py --archives-sheet "<lien du classeur>" --libelle "2021-2025"
+      Autre classeur (archives des années antérieures). Colonnes reconnues par
+      leur intitulé ; toutes les feuilles par défaut (--feuilles "2021,2022").
   ./venv/bin/python recherche.py --indexer-dossier ~/Documents/GED [--sans-texte]
   ./venv/bin/python recherche.py --exporter index_ged.jsonl
   ./venv/bin/python recherche.py --importer index_ged.jsonl [--synchroniser]
@@ -360,18 +364,52 @@ def statistiques():
 # Sources : registre CSV, Zoho Sheet, dossier local, JSONL
 # ---------------------------------------------------------------------------
 _SYNONYMES = {
-    "nom": ["nom du fichier", "nom fichier", "fichier"],
-    "service": ["service"],
-    "type_doc": ["type", "type de document"],
-    "date": ["date", "date du document"],
-    "objet": ["objet"],
-    "lien": ["lien zoho", "lien"],
-    "sens": ["sens"],
-    "correspondant": ["correspondant"],
+    "nom": ["nom du fichier", "nom fichier", "fichier", "nom du document", "nom document",
+            "document"],
+    "service": ["service", "direction", "departement"],
+    "type_doc": ["type", "type de document", "nature", "categorie", "nature du document"],
+    "date": ["date", "date du document", "date du courrier", "date courrier",
+             "date d arrivee", "date de reception", "date d envoi", "date de depart",
+             "date d enregistrement"],
+    "objet": ["objet", "objet du courrier", "intitule", "libelle", "titre", "sujet",
+              "description"],
+    "lien": ["lien zoho", "lien", "url", "lien workdrive", "lien du document",
+             "lien fichier", "lien du fichier"],
+    "sens": ["sens", "flux", "type de courrier", "entrant sortant", "arrivee depart"],
+    "correspondant": ["correspondant", "organisme", "structure", "tiers", "partenaire",
+                      "provenance", "expediteur destinataire"],
     "expediteur": ["expediteur", "emetteur"],
     "destinataire": ["destinataire"],
-    "observations": ["observations"],
+    "numero": ["n", "no", "num", "numero", "n d ordre", "numero d ordre",
+               "n d enregistrement", "numero d enregistrement", "reference", "ref"],
+    "observations": ["observations", "observation", "remarques", "commentaire",
+                     "suites a donner"],
 }
+
+
+def _date_iso(valeur):
+    """« 12/03/2023 », « 12-03-23 », « 2023-03-12 », « 2023 » -> ISO (ou "")."""
+    v = str(valeur or "").strip()
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", v)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+    m = re.match(r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})", v)
+    if m:
+        a = int(m.group(3))
+        a = a + 2000 if a < 100 else a
+        if 1 <= int(m.group(2)) <= 12:
+            return f"{a:04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    m = re.match(r"^(19|20)\d{2}$", v)
+    return m.group(0) if m else ""
+
+
+def _sens_lisible(valeur):
+    v = _normaliser(valeur)
+    if v.startswith(("entr", "arriv", "recu")):
+        return "Entrant"
+    if v.startswith(("sort", "depart", "envoy", "emis")):
+        return "Sortant"
+    return str(valeur or "").strip()
 
 
 def _depuis_ligne_registre(ligne, source):
@@ -396,6 +434,172 @@ def _depuis_ligne_registre(ligne, source):
             "sens": d.get("sens", ""), "correspondant": correspondant,
             "objet": d.get("objet", ""), "lien": lien, "source": source,
             "mots_cles": d.get("observations", "")}
+
+
+# ---------------------------------------------------------------------------
+# Autres classeurs Zoho Sheet (archives 2021-2025…)
+# ---------------------------------------------------------------------------
+F_SOURCES = BASE / "sources_sheet.json"
+_MOTIF_ID_SHEET = re.compile(r"(?:/open/|/sheet/|/spreadsheet/|^)([A-Za-z0-9]{25,})")
+
+
+def id_classeur(ref):
+    """Identifiant d'un classeur Zoho Sheet depuis son lien ou son id."""
+    m = _MOTIF_ID_SHEET.search(str(ref or "").strip())
+    return m.group(1) if m else ""
+
+
+def _connecteur():
+    sys.path.insert(0, str(RACINE))
+    from zoho_connector import ZohoConnector  # noqa: PLC0415
+    return ZohoConnector()
+
+
+def _appel_sheet(connecteur, classeur, donnees):
+    import requests  # noqa: PLC0415
+    r = requests.post(f"https://sheet.zoho.com/api/v2/{classeur}",
+                      headers=connecteur._headers(
+                          {"Content-Type": "application/x-www-form-urlencoded"}),
+                      data=donnees, timeout=60)
+    r.raise_for_status()
+    corps = r.json()
+    if corps.get("status") == "failure":
+        raise RuntimeError(f"Zoho Sheet : {corps}")
+    return corps
+
+
+def feuilles_classeur(connecteur, classeur):
+    corps = _appel_sheet(connecteur, classeur, {"method": "worksheet.list"})
+    noms = []
+    for f in corps.get("worksheet_names") or corps.get("worksheets") or []:
+        nom = f.get("worksheet_name") if isinstance(f, dict) else f
+        if nom:
+            noms.append(str(nom))
+    return noms
+
+
+def lignes_feuille(connecteur, classeur, feuille, taille_lot=500):
+    debut = 1
+    while True:
+        corps = _appel_sheet(connecteur, classeur, {
+            "method": "worksheet.records.fetch", "worksheet_name": feuille,
+            "header_row": 1, "records_start_index": debut, "count": taille_lot})
+        lot = corps.get("records") or []
+        for ligne in lot:
+            yield ligne
+        if len(lot) < taille_lot:
+            return
+        debut += taille_lot
+
+
+def _depuis_ligne_archive(ligne, source, feuille, rang):
+    """Ligne d'un registre d'archives aux colonnes libres -> document.
+
+    Colonnes reconnues par leur intitulé (synonymes) ; les autres colonnes
+    deviennent des mots-clés, donc restent cherchables. Sans colonne « nom
+    du fichier », un nom stable est construit : feuille + numéro + objet."""
+    inverse = {}
+    for champ, variantes in _SYNONYMES.items():
+        for v in variantes:
+            inverse.setdefault(v, champ)
+    d, autres, liens = {}, [], []
+    for entete, valeur in ligne.items():
+        if valeur in (None, ""):
+            continue
+        valeur = str(valeur).strip()
+        if valeur.startswith("http"):
+            liens.append(valeur)
+        champ = inverse.get(_normaliser(entete))
+        if champ and champ not in d:
+            d[champ] = valeur
+        elif not valeur.startswith("http"):
+            autres.append(valeur)
+    if not any(d.get(k) for k in ("nom", "objet", "correspondant", "expediteur",
+                                  "destinataire", "numero")):
+        return None  # ligne vide ou de sous-total
+    date = _date_iso(d.get("date"))
+    if not date and re.match(r"^(19|20)\d{2}$", str(feuille).strip()):
+        date = str(feuille).strip()
+    nom = d.get("nom", "")
+    if not nom or nom.startswith("http"):
+        num = d.get("numero") or f"{rang:04d}"
+        nom = f"ARCHIVE {feuille} n°{num} — {(d.get('objet') or '')[:70]}".strip(" —")
+    lien = d.get("lien", "") if str(d.get("lien", "")).startswith("http") else ""
+    lien = lien or (liens[0] if liens else "")
+    correspondant = d.get("correspondant") or d.get("expediteur") or d.get("destinataire") or ""
+    return {"nom": nom, "service": d.get("service", ""), "type_doc": d.get("type_doc", ""),
+            "date": date, "annee": date[:4], "sens": _sens_lisible(d.get("sens", "")),
+            "correspondant": correspondant, "objet": d.get("objet", ""), "lien": lien,
+            "source": source,
+            "mots_cles": " ".join([str(feuille), d.get("numero", ""),
+                                   d.get("observations", "")] + autres)}
+
+
+def depuis_sheet_externe(ref, feuilles=None, libelle="", apercu=False, afficher=print):
+    """Indexe un autre classeur Zoho Sheet (archives d'années antérieures…).
+
+    ref : lien ou id du classeur. feuilles : liste de noms, None = toutes.
+    apercu=True : n'indexe rien, montre les colonnes reconnues et 3 exemples.
+    Retourne le nombre de documents indexés (ou lus, en aperçu)."""
+    classeur = id_classeur(ref)
+    if not classeur:
+        raise ValueError(f"Lien ou identifiant de classeur Zoho Sheet invalide : {ref}")
+    zc = _connecteur()
+    feuilles = feuilles or feuilles_classeur(zc, classeur)
+    source = f"archives {libelle}".strip() if libelle else "archives Zoho Sheet"
+    n = 0
+    for feuille in feuilles:
+        nb_feuille, exemples, entetes = 0, [], []
+        for rang, ligne in enumerate(lignes_feuille(zc, classeur, feuille), 1):
+            if not entetes:
+                entetes = list(ligne.keys())
+            doc = _depuis_ligne_archive(ligne, source, feuille, rang)
+            if not doc:
+                continue
+            nb_feuille += 1
+            if apercu:
+                if len(exemples) < 3:
+                    exemples.append(doc)
+            elif indexer(doc):
+                n += 1
+        if apercu:
+            n += nb_feuille
+            afficher(f"\n--- Feuille « {feuille} » : {nb_feuille} document(s)")
+            inverse = {v: c for c, vs in _SYNONYMES.items() for v in vs}
+            for e in entetes:
+                afficher(f"    {str(e)[:32]:32} -> {inverse.get(_normaliser(e), '(mot-clé)')}")
+            for doc in exemples:
+                afficher(f"    · {doc['nom'][:70]} | {doc['date'] or '—'} | "
+                         f"{doc['correspondant'][:25] or '—'} | lien : {'oui' if doc['lien'] else 'non'}")
+        elif afficher:
+            afficher(f"  « {feuille} » : {nb_feuille} document(s)")
+    return n
+
+
+def sources_memorisees():
+    try:
+        return json.loads(F_SOURCES.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def memoriser_source(ref, feuilles=None, libelle=""):
+    """Le bouton « Réindexer » de l'écran Recherche relira aussi ce classeur."""
+    sources = [s for s in sources_memorisees() if s.get("id") != id_classeur(ref)]
+    sources.append({"id": id_classeur(ref), "feuilles": feuilles or None, "libelle": libelle})
+    BASE.mkdir(parents=True, exist_ok=True)
+    F_SOURCES.write_text(json.dumps(sources, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def depuis_sources_memorisees(afficher=None):
+    n = 0
+    for s in sources_memorisees():
+        try:
+            n += depuis_sheet_externe(s["id"], s.get("feuilles"), s.get("libelle", ""),
+                                      afficher=afficher)
+        except Exception:  # noqa: BLE001
+            logging.error("Réindexation de la source %s impossible", s.get("id"), exc_info=True)
+    return n
 
 
 def depuis_registre_csv(chemin=None):
@@ -618,6 +822,8 @@ try:
         def tache():
             try:
                 n = depuis_sheet() if source == "sheet" else depuis_registre_csv()
+                if source == "sheet":
+                    n += depuis_sources_memorisees()
                 print(f"[RECHERCHE] Réindexation ({source}) : {n} document(s)")
             except Exception:  # noqa: BLE001
                 logging.error("Réindexation %s impossible", source, exc_info=True)
@@ -679,6 +885,18 @@ def main():
                 print(f"    … {extrait[:160]}")
     elif "--depuis-registre" in args:
         print(f"{depuis_registre_csv(_option(args, '--depuis-registre'))} document(s) indexé(s).")
+    elif "--archives-sheet" in args:
+        ref = _option(args, "--archives-sheet")
+        feuilles = [f.strip() for f in (_option(args, "--feuilles", "") or "").split(",") if f.strip()]
+        libelle = _option(args, "--libelle", "") or ""
+        if "--apercu" in args:
+            n = depuis_sheet_externe(ref, feuilles or None, libelle, apercu=True)
+            print(f"\nAperçu : {n} document(s) seraient indexés. Rien n'a été écrit.")
+        else:
+            n = depuis_sheet_externe(ref, feuilles or None, libelle)
+            memoriser_source(ref, feuilles or None, libelle)
+            print(f"{n} document(s) d'archives indexé(s). Source mémorisée : le bouton "
+                  "« Réindexer » de l'écran Recherche la relira.")
     elif "--depuis-sheet" in args:
         print(f"{depuis_sheet()} document(s) indexé(s) depuis Zoho Sheet.")
     elif "--indexer-dossier" in args:
