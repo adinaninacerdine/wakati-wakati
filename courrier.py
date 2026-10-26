@@ -63,7 +63,7 @@ import subprocess
 import tempfile
 import threading
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -86,6 +86,7 @@ F_REPONSES = DONNEES / "reponses.json"
 F_ENTRANTS = DONNEES / "entrants.json"
 F_PARAMETRES = DONNEES / "parametres.json"
 F_SECRET_IA = DONNEES / "secret_ia.json"
+F_RAPPELS = DONNEES / "rappels_agenda.json"
 
 FICHIER_VISAS = RACINE / "visas.json"
 
@@ -3123,11 +3124,18 @@ def rdv():
               + (" Invitation envoyée." if invites else ""), "success")
         if rep:
             return redirect(url_for("courrier.edition", ref=rep["ref"]))
-        return redirect(url_for("courrier.liste"))
+        return redirect(url_for("courrier.agenda", directeur=sig.get("code"),
+                                semaine=debut.date().isoformat()))
 
     demain = (datetime.now() + timedelta(days=1)).date()
     while demain.weekday() >= 5:  # pas de RDV proposé le week-end par défaut
         demain += timedelta(days=1)
+    try:  # date choisie depuis l'écran Agenda
+        choisie = date.fromisoformat(request.args.get("date", ""))
+        if choisie >= date.today():
+            demain = choisie
+    except ValueError:
+        pass
     lien_ged = request.host_url.rstrip("/") + (
         url_for("courrier.edition", ref=rep["ref"]) if rep else url_for("courrier.liste"))
     valeurs = {
@@ -3139,7 +3147,7 @@ def rdv():
             f"Objet du courrier : {objet}" if objet else "",
             f"Dossier dans la GED : {lien_ged}") if x),
         "email_correspondant": fiche.get("email", ""),
-        "directeur": "DG",
+        "directeur": request.args.get("directeur") or "DG",
     }
     return render_template("courrier_rdv.html", page=("courrier" if (rep or e) else "rdv"),
                            rep=rep, entrant=e,
@@ -3148,6 +3156,297 @@ def rdv():
                            cal_raison=raison_cal, entrant_id=entrant_id,
                            ref=rep["ref"] if rep else "",
                            **{k: v for k, v in _contexte_commun().items() if k != "signataires"})
+
+
+# ---------------------------------------------------------------------------
+# Agenda de la Direction : consultation, rappels, programme du jour
+# ---------------------------------------------------------------------------
+JOURS_COURTS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
+MOIS_COURTS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août",
+               "sept.", "oct.", "nov.", "déc."]
+
+
+def _agenda_de(sig):
+    """(uid de l'agenda, e-mail à filtrer, libellé) pour un signataire.
+
+    Agenda partagé : on lit l'agenda du directeur tel quel. Sinon on lit
+    l'agenda de la GED et on ne garde que les RDV où il est invité."""
+    if not sig:
+        return "", "", ""
+    if sig.get("agenda"):
+        return sig["agenda"], "", sig.get("agenda_nom") or "agenda partagé"
+    ged = parametres().get("agenda_ged", "")
+    if ged:
+        return ged, (sig.get("email") or "").strip().lower(), "agenda de la GED (invitations)"
+    return "", "", ""
+
+
+def evenements_directeur(sig, du, au):
+    import calendrier  # noqa: PLC0415
+    uid, filtre, _ = _agenda_de(sig)
+    if not uid:
+        raise RuntimeError(f"Aucun agenda configuré pour {sig.get('fonction', '?')} : "
+                           "Paramètres › Signataires › Agenda Zoho.")
+    evts = calendrier.lister_evenements(uid, du, au)
+    if filtre:
+        evts = [e for e in evts
+                if filtre == e["organisateur"] or filtre in {i["email"] for i in e["invites"]}]
+    return evts
+
+
+def _cle_evenement(evt):
+    return f"{evt['uid']}|{evt['debut'].isoformat(timespec='minutes')}"
+
+
+def rappels_envoyes():
+    return _lire(F_RAPPELS, {})
+
+
+def _noter_rappel(cle, quoi, canaux, par):
+    with _verrou:
+        d = _lire(F_RAPPELS, {})
+        d.setdefault(cle, []).append({"le": _maintenant(), "par": par,
+                                      "quoi": quoi, "canaux": canaux})
+        # On ne garde que 90 jours d'historique
+        limite = (date.today() - timedelta(days=90)).isoformat()
+        d = {k: v for k, v in d.items()
+             if (k.split("|")[1][:10] if "|" in k else k[-10:]) >= limite}
+        _ecrire(F_RAPPELS, d)
+
+
+def _rdv_lies_ged():
+    """uid Zoho -> courrier de la GED qui a donné lieu au rendez-vous."""
+    liens = {}
+    for r in reponses().values():
+        for t in r.get("rdv", []) or []:
+            if t.get("uid"):
+                liens[t["uid"]] = {"ref": r.get("ref", ""),
+                                   "libelle": r.get("objet") or r.get("objet_entrant") or r.get("ref", "")}
+    for x in entrants().values():
+        for t in x.get("rdv", []) or []:
+            if t.get("uid") and t["uid"] not in liens:
+                liens[t["uid"]] = {"ref": "", "libelle": x.get("objet") or x.get("organisation") or ""}
+    return liens
+
+
+def _envoyer_au_directeur(sig, texte_cliq, sujet, texte_mail, canaux=("cliq", "email")):
+    """Cliq (message privé) et/ou e-mail. Retourne (ok, [détails])."""
+    try:
+        import notifier  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        return False, [f"notifier.py indisponible : {exc}"]
+    email = (sig.get("email") or "").strip()
+    if not email:
+        return False, [f"Adresse e-mail de {sig.get('fonction', '?')} absente : "
+                       "Paramètres › Signataires."]
+    res, ok_un = [], False
+    if "cliq" in canaux:
+        ok, detail = notifier.message_cliq_personne(email, texte_cliq)
+        res.append(detail)
+        ok_un = ok_un or ok
+    if "email" in canaux:
+        ok, detail = notifier.envoyer_email([email], sujet, texte_mail)
+        res.append(detail)
+        ok_un = ok_un or ok
+    return ok_un, res
+
+
+def _signature_rappel(par):
+    if not par or par.strip().lower() in ("ged", "service ged"):
+        return "— Service GED, Huri Money S.A."
+    return f"— {par}, service GED, Huri Money S.A."
+
+
+def envoyer_rappel(sig, evt, note="", par="GED", canaux=("cliq", "email")):
+    import calendrier  # noqa: PLC0415
+    quand = (calendrier.jour_lettre(evt["debut"]) + " (toute la journée)" if evt["journee"]
+             else calendrier.date_heure_lettre(evt["debut"]))
+    corps = [f"Rendez-vous : {quand}"]
+    if evt.get("lieu"):
+        corps.append(f"Lieu : {evt['lieu']}")
+    if note.strip():
+        corps += ["", note.strip()]
+    if evt.get("lien"):
+        corps += ["", f"Dans l'agenda : {evt['lien']}"]
+    corps += ["", _signature_rappel(par)]
+    texte_cliq = "\n".join([f"📅 *Rappel — {evt['titre']}*"] + corps)
+    texte_mail = "\n".join(["Bonjour,", "", f"Petit rappel : {evt['titre']}", ""] + corps)
+    ok, details = _envoyer_au_directeur(sig, texte_cliq, f"Rappel : {evt['titre']} — {quand}",
+                                        texte_mail, canaux)
+    if ok:
+        _noter_rappel(_cle_evenement(evt), "rappel", list(canaux), par)
+    return ok, details
+
+
+def envoyer_programme(sig, jour, par="GED", canaux=("cliq", "email"), evts=None):
+    """Programme d'une journée envoyé au directeur. Retourne (ok, détails, nb)."""
+    import calendrier  # noqa: PLC0415
+    if evts is None:
+        evts = evenements_directeur(sig, jour, jour)
+    evts = [e for e in evts if e["debut"].date() <= jour <= (e["fin"] - timedelta(seconds=1)).date()
+            or e["debut"].date() == jour]
+    evts = sorted(evts, key=lambda e: (not e["journee"], e["debut"]))
+    titre = f"Programme du {calendrier.jour_lettre(jour)}"
+    if evts:
+        lignes = []
+        for e in evts:
+            lignes.append(f"• {calendrier.plage(e)} — {e['titre']}"
+                          + (f" ({e['lieu']})" if e.get("lieu") else ""))
+    else:
+        lignes = ["Aucun rendez-vous prévu."]
+    pied = ["", _signature_rappel(par)]
+    texte_cliq = "\n".join([f"🗓 *{titre}*", ""] + lignes + pied)
+    texte_mail = "\n".join(["Bonjour,", "", f"Voici votre {titre[0].lower() + titre[1:]} :", ""]
+                           + lignes + pied)
+    ok, details = _envoyer_au_directeur(sig, texte_cliq, f"{titre} — {len(evts)} rendez-vous",
+                                        texte_mail, canaux)
+    if ok:
+        _noter_rappel(f"programme|{sig.get('code')}|{jour.isoformat()}", "programme",
+                      list(canaux), par)
+    return ok, details, len(evts)
+
+
+def _canaux_formulaire(f):
+    c = tuple(x for x in ("cliq", "email") if f.get(f"canal_{x}") == "on")
+    return c or ("cliq", "email")
+
+
+def _signataire(code):
+    return next((x for x in parametres().get("signataires", []) if x.get("code") == code), None)
+
+
+@bp_courrier.route("/agenda")
+@_reserve_responsable
+def agenda():
+    import calendrier  # noqa: PLC0415
+    sigs = [dict(x, agenda_info=_agenda_de(x)) for x in parametres().get("signataires", [])]
+    code = request.args.get("directeur") or "DG"
+    sig = next((x for x in sigs if x.get("code") == code), None)
+    try:
+        ref_jour = date.fromisoformat(request.args.get("semaine", ""))
+    except ValueError:
+        ref_jour = date.today()
+    lundi = ref_jour - timedelta(days=ref_jour.weekday())
+    dimanche = lundi + timedelta(days=6)
+    auj, maintenant = date.today(), datetime.now()
+
+    ok_cal, raison_cal = calendrier.disponible()
+    evts, erreur = [], ""
+    if ok_cal and sig:
+        try:
+            evts = evenements_directeur(sig, lundi, dimanche)
+        except Exception as exc:  # noqa: BLE001
+            erreur = str(exc)
+            logging.error("Lecture de l'agenda %s", code, exc_info=True)
+
+    liens, rappels = _rdv_lies_ged(), rappels_envoyes()
+    jours = []
+    for i in range(7):
+        j = lundi + timedelta(days=i)
+        du_jour = []
+        for e in evts:
+            if e["journee"]:
+                dedans = e["debut"].date() <= j <= (e["fin"] - timedelta(seconds=1)).date() \
+                    or e["debut"].date() == j
+            else:
+                dedans = e["debut"].date() == j
+            if not dedans:
+                continue
+            cle = _cle_evenement(e)
+            du_jour.append(dict(e, cle=cle, plage=calendrier.plage(e),
+                                ged=liens.get(e["uid"]), rappels=rappels.get(cle, []),
+                                passe=e["fin"] <= maintenant,
+                                en_cours=e["debut"] <= maintenant < e["fin"] and not e["journee"]))
+        du_jour.sort(key=lambda e: (not e["journee"], e["debut"]))
+        if i >= 5 and not du_jour and j != auj:
+            continue  # week-end vide : non affiché
+        jours.append({"date": j, "iso": j.isoformat(),
+                      "libelle": f"{JOURS_COURTS[j.weekday()].capitalize()} {j.day} {MOIS_COURTS[j.month - 1]}",
+                      "aujourdhui": j == auj, "passe": j < auj, "evenements": du_jour,
+                      "programme": rappels.get(f"programme|{code}|{j.isoformat()}", [])})
+
+    a_venir = [e for e in evts if e["fin"] > maintenant]
+    prochain = next((e for e in a_venir if not e["journee"]), None)
+    n1 = lambda d: "1er" if d.day == 1 else str(d.day)  # noqa: E731
+    if lundi.month == dimanche.month:
+        titre_semaine = f"Semaine du {n1(lundi)} au {n1(dimanche)} {calendrier.MOIS[dimanche.month - 1]} {dimanche.year}"
+    else:
+        titre_semaine = (f"Semaine du {n1(lundi)} {calendrier.MOIS[lundi.month - 1]} au "
+                         f"{n1(dimanche)} {calendrier.MOIS[dimanche.month - 1]} {dimanche.year}")
+    return render_template(
+        "courrier_agenda.html", page="agenda", sig=sig, directeurs=sigs, code=code,
+        jours=jours, titre_semaine=titre_semaine,
+        semaine=lundi.isoformat(),
+        semaine_prec=(lundi - timedelta(days=7)).isoformat(),
+        semaine_suiv=(lundi + timedelta(days=7)).isoformat(),
+        cette_semaine=lundi <= auj <= dimanche,
+        aujourdhui=auj.isoformat(),
+        demain=(auj + timedelta(days=1)).isoformat(),
+        nb_semaine=len(evts), nb_auj=sum(1 for e in evts if e["debut"].date() == auj),
+        prochain=prochain, prochain_plage=calendrier.plage(prochain) if prochain else "",
+        prochain_jour=(JOURS_COURTS[prochain["debut"].weekday()] + f" {prochain['debut'].day}"
+                       if prochain else ""),
+        libelle_agenda=_agenda_de(sig)[2] if sig else "",
+        cal_ok=ok_cal, cal_raison=raison_cal, erreur=erreur,
+        **{k: v for k, v in _contexte_commun().items() if k != "signataires"})
+
+
+def _retour_agenda(f):
+    return redirect(url_for("courrier.agenda", directeur=f.get("directeur", "DG"),
+                            semaine=f.get("semaine", "")))
+
+
+@bp_courrier.route("/agenda/rappel", methods=["POST"])
+@_reserve_responsable
+def agenda_rappel():
+    f = request.form
+    sig = _signataire(f.get("directeur", ""))
+    if not sig:
+        flash("Directeur inconnu.", "error")
+        return _retour_agenda(f)
+    try:
+        debut = datetime.fromisoformat(f.get("debut", ""))
+    except ValueError:
+        flash("Rendez-vous introuvable.", "error")
+        return _retour_agenda(f)
+    # On relit l'agenda : le rappel part avec l'heure et le lieu à jour.
+    try:
+        evts = evenements_directeur(sig, debut.date(), debut.date())
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Lecture de l'agenda impossible : {exc}", "error")
+        return _retour_agenda(f)
+    evt = next((e for e in evts if e["uid"] == f.get("uid")
+                and e["debut"].isoformat(timespec="minutes") == debut.isoformat(timespec="minutes")),
+               None) or next((e for e in evts if e["uid"] == f.get("uid")), None)
+    if not evt:
+        flash("Ce rendez-vous n'est plus dans l'agenda (déplacé ou supprimé ?).", "error")
+        return _retour_agenda(f)
+    ok, details = envoyer_rappel(sig, evt, f.get("note", ""), _qui(), _canaux_formulaire(f))
+    flash(("Rappel envoyé — " if ok else "Rappel non envoyé — ") + " ; ".join(details),
+          "success" if ok else "error")
+    return _retour_agenda(f)
+
+
+@bp_courrier.route("/agenda/programme", methods=["POST"])
+@_reserve_responsable
+def agenda_programme():
+    f = request.form
+    sig = _signataire(f.get("directeur", ""))
+    try:
+        jour = date.fromisoformat(f.get("jour", ""))
+    except ValueError:
+        jour = date.today()
+    if not sig:
+        flash("Directeur inconnu.", "error")
+        return _retour_agenda(f)
+    try:
+        ok, details, nb = envoyer_programme(sig, jour, _qui(), _canaux_formulaire(f))
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Programme non envoyé : {exc}", "error")
+        return _retour_agenda(f)
+    flash((f"Programme envoyé ({nb} rendez-vous) — " if ok else "Programme non envoyé — ")
+          + " ; ".join(details), "success" if ok else "error")
+    return _retour_agenda(f)
 
 
 @bp_courrier.route("/parametres/tester-ia", methods=["POST"])

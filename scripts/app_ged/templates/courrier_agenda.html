@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agenda de la Direction — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Agenda{% if sig %} — {{ sig.fonction|replace('Le ', '')|replace('La ', '') }}{% if sig.nom %} ({{ sig.nom }}){% endif %}{% endif %}</h1>
+    <div class="contexte">
+      <form method="GET" action="{{ url_for('courrier.agenda') }}" class="choix-agenda">
+        <input type="hidden" name="semaine" value="{{ semaine }}">
+        <select name="directeur" onchange="this.form.submit()" aria-label="Agenda affiché">
+          {% for d in directeurs %}
+          <option value="{{ d.code }}" {% if d.code == code %}selected{% endif %}>
+            {{ d.fonction|replace('Le ', '')|replace('La ', '') }}{% if not d.agenda_info[0] %} — non configuré{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </form>
+      <a class="bouton" href="{{ url_for('courrier.rdv', directeur=code) }}">＋ Programmer un RDV</a>
+    </div>
+  </header>
+
+  <div class="contenu large">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if not cal_ok %}
+    <div class="encart alerte"><strong>Agenda non relié.</strong> {{ cal_raison }}</div>
+    {% elif sig and not sig.agenda_info[0] %}
+    <div class="encart alerte"><strong>Aucun agenda pour {{ sig.fonction }}.</strong>
+      Renseignez son agenda Zoho (ou l'agenda de la GED) dans
+      <a href="{{ url_for('courrier.ecran_parametres') }}">Paramètres › Signataires</a>.</div>
+    {% elif erreur %}
+    <div class="encart alerte"><strong>Lecture de l'agenda impossible.</strong> {{ erreur }}</div>
+    {% endif %}
+
+    {% if sig and sig.agenda_info[0] %}
+    <div class="cartes cartes-agenda">
+      <div class="carte">
+        <div class="valeur">{{ nb_auj if cette_semaine else '—' }}</div>
+        <div class="etiq">Aujourd'hui</div>
+        <div class="note">rendez-vous{% if not cette_semaine %} (autre semaine affichée){% endif %}</div>
+      </div>
+      <div class="carte">
+        <div class="valeur">{{ nb_semaine }}</div>
+        <div class="etiq">Cette semaine</div>
+        <div class="note">{{ titre_semaine|replace('Semaine du ', 'du ') }}</div>
+      </div>
+      <div class="carte carte-prochain">
+        {% if prochain %}
+        <div class="etiq">Prochain rendez-vous</div>
+        <div class="prochain-titre">{{ prochain.titre }}</div>
+        <div class="note">{{ prochain_jour }} · {{ prochain_plage }}{% if prochain.lieu %} · {{ prochain.lieu }}{% endif %}</div>
+        {% else %}
+        <div class="etiq">Prochain rendez-vous</div>
+        <div class="note">Aucun dans la semaine affichée.</div>
+        {% endif %}
+      </div>
+      <div class="carte">
+        <div class="etiq">Envoyer le programme à {{ sig.code }}</div>
+        {% if sig.email %}
+        <div class="programme-boutons">
+          <form method="POST" action="{{ url_for('courrier.agenda_programme') }}">
+            <input type="hidden" name="directeur" value="{{ code }}">
+            <input type="hidden" name="semaine" value="{{ semaine }}">
+            <input type="hidden" name="jour" value="{{ aujourdhui }}">
+            <button type="submit" class="mineur">Du jour</button>
+          </form>
+          <form method="POST" action="{{ url_for('courrier.agenda_programme') }}">
+            <input type="hidden" name="directeur" value="{{ code }}">
+            <input type="hidden" name="semaine" value="{{ semaine }}">
+            <input type="hidden" name="jour" value="{{ demain }}">
+            <button type="submit" class="mineur">De demain</button>
+          </form>
+        </div>
+        <div class="note">Cliq + e-mail à {{ sig.email }}</div>
+        {% else %}
+        <div class="note">Ajoutez son e-mail dans Paramètres › Signataires.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="barre-semaine">
+      <div class="nav-semaine">
+        <a class="bouton-mineur" href="{{ url_for('courrier.agenda', directeur=code, semaine=semaine_prec) }}">← Précédente</a>
+        {% if not cette_semaine %}<a class="bouton-mineur" href="{{ url_for('courrier.agenda', directeur=code) }}">Aujourd'hui</a>{% endif %}
+        <a class="bouton-mineur" href="{{ url_for('courrier.agenda', directeur=code, semaine=semaine_suiv) }}">Suivante →</a>
+      </div>
+      <h2 class="titre-semaine">{{ titre_semaine }}</h2>
+      <div class="aide">{{ libelle_agenda }}</div>
+    </div>
+
+    <div class="agenda-grille" style="--nb-jours: {{ jours|length }};">
+      {% for j in jours %}
+      <section class="jour {% if j.aujourdhui %}aujourdhui{% endif %} {% if j.passe %}passe{% endif %}">
+        <header class="jour-tete">
+          <span class="jour-nom">{{ j.libelle }}</span>
+          {% if j.aujourdhui %}<span class="badge alerte">aujourd'hui</span>{% endif %}
+          {% if not j.passe %}
+          <a class="jour-ajout" href="{{ url_for('courrier.rdv', directeur=code, date=j.iso) }}" title="Programmer un RDV ce jour-là">＋</a>
+          {% endif %}
+        </header>
+
+        {% for e in j.evenements %}
+        <article class="evt {% if e.passe %}evt-passe{% endif %} {% if e.en_cours %}evt-en-cours{% endif %} {% if e.journee %}evt-journee{% endif %}">
+          <div class="evt-heure">{{ e.plage }}{% if e.en_cours %} · <strong>en cours</strong>{% endif %}</div>
+          <div class="evt-titre">{{ e.titre }}</div>
+          {% if e.lieu %}<div class="evt-meta">⌖ {{ e.lieu }}</div>{% endif %}
+          {% if e.ged %}
+          <div class="evt-meta">
+            {% if e.ged.ref %}<a href="{{ url_for('courrier.edition', ref=e.ged.ref) }}">✉ {{ e.ged.libelle|truncate(60) }}</a>
+            {% else %}✉ {{ e.ged.libelle|truncate(60) }}{% endif %}
+          </div>
+          {% endif %}
+          {% if e.invites %}<div class="evt-meta">{{ e.invites|length }} invité(s){% set refus = e.invites|selectattr('statut', 'equalto', 'DECLINED')|list %}{% if refus %} · <span class="vie-retard">{{ refus|length }} refus</span>{% endif %}</div>{% endif %}
+          {% if e.rappels %}
+          {% set dernier = e.rappels[-1] %}
+          <div class="evt-rappel">✓ Rappel envoyé le {{ dernier.le[8:10] }}/{{ dernier.le[5:7] }} à {{ dernier.le[11:16] }}{% if e.rappels|length > 1 %} ({{ e.rappels|length }} fois){% endif %}</div>
+          {% endif %}
+
+          <div class="evt-actions">
+            {% if not e.passe and sig.email %}
+            <details class="evt-rappeler">
+              <summary>Rappeler à {{ sig.code }}</summary>
+              <form method="POST" action="{{ url_for('courrier.agenda_rappel') }}">
+                <input type="hidden" name="directeur" value="{{ code }}">
+                <input type="hidden" name="semaine" value="{{ semaine }}">
+                <input type="hidden" name="uid" value="{{ e.uid }}">
+                <input type="hidden" name="debut" value="{{ e.debut.isoformat(timespec='minutes') }}">
+                <textarea name="note" rows="3" placeholder="Message facultatif — ex. : le dossier est sur votre bureau."></textarea>
+                <div class="evt-canaux">
+                  <label class="case"><input type="checkbox" name="canal_cliq" checked> Cliq</label>
+                  <label class="case"><input type="checkbox" name="canal_email" checked> E-mail</label>
+                </div>
+                <button type="submit" class="mineur">Envoyer le rappel</button>
+              </form>
+            </details>
+            {% endif %}
+            {% if e.lien %}<a class="lien-action" href="{{ e.lien }}" target="_blank" rel="noopener">Ouvrir dans Zoho</a>{% endif %}
+          </div>
+        </article>
+        {% else %}
+        <p class="jour-vide">Aucun rendez-vous</p>
+        {% endfor %}
+
+        {% if j.programme %}
+        {% set p = j.programme[-1] %}
+        <div class="jour-pied">Programme envoyé à {{ p.le[11:16] }}{% if p.le[:10] != j.iso %} le {{ p.le[8:10] }}/{{ p.le[5:7] }}{% endif %}</div>
+        {% endif %}
+      </section>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+</body>
+</html>

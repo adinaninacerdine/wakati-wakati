@@ -23,20 +23,29 @@ DEUX FAÇONS D'ÉCRIRE DANS L'AGENDA D'UN DIRECTEUR
      du compte GED et le directeur y est invité par son adresse e-mail ; il
      apparaît dans son agenda à l'acceptation.
 
+LECTURE DE L'AGENDA
+-------------------
+lister_evenements(uid, du, au) lit les rendez-vous d'un agenda (écran Agenda
+de la GED, rappels, programme du jour). Les rendez-vous répétitifs sont
+renvoyés occurrence par occurrence.
+
 LIGNE DE COMMANDE (tests)
 -------------------------
   python calendrier.py --tester                 # jeton + liste des agendas visibles
   python calendrier.py --evenement-test <UID>   # crée un RDV de test dans 1 h (30 min)
+  python calendrier.py --semaine <UID>          # rendez-vous des 7 prochains jours
   docker exec ged-wakati python /app/calendrier.py --tester
 """
 
 import json
 import logging
 import os
+import re
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -156,6 +165,138 @@ def lister_calendriers(journal=None):
     return res
 
 
+# ---------------------------------------------------------------------------
+# Lecture des rendez-vous
+# ---------------------------------------------------------------------------
+_MOTIF_DT = re.compile(r"^(\d{8})(?:T(\d{4,6}))?(Z|[+-]\d{4})?$")
+
+
+def _lire_dt(valeur):
+    """« 20261026T100000+0300 », « 20261026T070000Z », « 20261026T100000 »
+    ou « 20261026 » -> (datetime naïf heure des Comores, journée_entière)."""
+    v = str(valeur or "").strip()
+    m = _MOTIF_DT.match(v)
+    if not m:
+        return None, False
+    jour, heure, decalage = m.groups()
+    if not heure:
+        return datetime.strptime(jour, "%Y%m%d"), True
+    heure = heure.ljust(6, "0")
+    d = datetime.strptime(jour + heure, "%Y%m%d%H%M%S")
+    if decalage:
+        if decalage == "Z":
+            d = d.replace(tzinfo=ZoneInfo("UTC"))
+        else:
+            signe = 1 if decalage[0] == "+" else -1
+            delta = timedelta(hours=int(decalage[1:3]), minutes=int(decalage[3:5])) * signe
+            from datetime import timezone  # noqa: PLC0415
+            d = d.replace(tzinfo=timezone(delta))
+        d = d.astimezone(ZoneInfo(FUSEAU)).replace(tzinfo=None)
+    return d, False
+
+
+def _evenements_bruts(calendrier_uid, du, au, par_occurrence):
+    params = {"range": json.dumps({"start": du.strftime("%Y%m%d"),
+                                   "end": au.strftime("%Y%m%d")}),
+              "timezone": FUSEAU}
+    if par_occurrence:
+        params["byinstance"] = "true"
+    entetes = dict(_entetes(), Accept="application/json+large")
+    r = requests.get(f"{_config()['api']}/calendars/{calendrier_uid}/events",
+                     headers=entetes, params=params, timeout=30)
+    try:
+        data = r.json()
+    except ValueError:
+        data = {"brut": r.text[:300]}
+    if r.status_code != 200 or not isinstance(data, dict) or "events" not in data:
+        # Zoho répond {"error": ...} ou parfois rien quand la période est vide
+        if r.status_code == 200 and isinstance(data, dict) and not data.get("error"):
+            return []
+        raise RuntimeError(f"Lecture de l'agenda : HTTP {r.status_code} {str(data)[:300]}")
+    return data.get("events") or []
+
+
+def _normaliser(e, complet=None):
+    """Événement Zoho -> dict GED. `complet` : la version détaillée du même
+    événement (titre, lieu… manquent dans les occurrences)."""
+    c = complet or {}
+    # Les dates viennent toujours de `e` : pour un RDV répétitif, c'est
+    # l'occurrence de la semaine affichée, pas la première séance.
+    dt = e.get("dateandtime") or {}
+    debut, journee = _lire_dt(dt.get("start") or e.get("start"))
+    fin, _ = _lire_dt(dt.get("end") or e.get("end"))
+    if debut is None:  # occurrence sans dates exploitables : version complète
+        dt = c.get("dateandtime") or {}
+        debut, journee = _lire_dt(dt.get("start") or c.get("start"))
+        fin, _ = _lire_dt(dt.get("end") or c.get("end"))
+    if debut is None:
+        return None
+    journee = journee or bool(e.get("isallday") or c.get("isallday"))
+    if fin is None:
+        fin = debut + timedelta(hours=1)
+    invites = []
+    for a in (e.get("attendees") or c.get("attendees") or []):
+        if isinstance(a, dict) and a.get("email"):
+            invites.append({"email": a["email"].lower(), "statut": a.get("status", "")})
+    v = lambda k: e.get(k) or c.get(k) or ""  # noqa: E731
+    return {
+        "uid": v("uid"),
+        "titre": v("title") or "(sans titre)",
+        "debut": debut, "fin": fin, "journee": journee,
+        "lieu": v("location"),
+        "description": v("description"),
+        "lien": v("viewEventURL") or v("view_event_url"),
+        "organisateur": str(v("organizer")).lower(),
+        "invites": invites,
+        "prive": bool(e.get("isprivate") or c.get("isprivate")),
+    }
+
+
+def lister_evenements(calendrier_uid, du, au):
+    """Rendez-vous de l'agenda entre deux dates (incluses), triés.
+
+    du, au : date. Zoho limite une lecture à 31 jours : on découpe."""
+    if isinstance(du, datetime):
+        du = du.date()
+    if isinstance(au, datetime):
+        au = au.date()
+    res, vus = [], set()
+    debut = du
+    while debut <= au:
+        fin = min(au, debut + timedelta(days=30))
+        complets = {x.get("uid"): x for x in _evenements_bruts(calendrier_uid, debut, fin, False)}
+        try:
+            occurrences = _evenements_bruts(calendrier_uid, debut, fin, True)
+        except Exception:  # noqa: BLE001
+            occurrences = list(complets.values())
+        for e in occurrences:
+            n = _normaliser(e, complets.get(e.get("uid")))
+            if not n:
+                continue
+            cle = (n["uid"], n["debut"].isoformat())
+            if cle in vus:
+                continue
+            vus.add(cle)
+            if n["fin"].date() < du or n["debut"].date() > au:
+                continue
+            res.append(n)
+        debut = fin + timedelta(days=1)
+    res.sort(key=lambda x: (x["debut"], not x["journee"]))
+    return res
+
+
+def heure_courte(d):
+    """datetime -> « 9 h », « 9 h 30 »."""
+    return f"{d.hour} h" + (f" {d.minute:02d}" if d.minute else "")
+
+
+def plage(evt):
+    """« Toute la journée », « 9 h – 10 h 30 »."""
+    if evt.get("journee"):
+        return "Toute la journée"
+    return f"{heure_courte(evt['debut'])} – {heure_courte(evt['fin'])}"
+
+
 def _format(d):
     """Heure locale des Comores, au format attendu par Zoho (le fuseau est
     donné à part, dans dateandtime.timezone)."""
@@ -220,6 +361,12 @@ MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août
         "septembre", "octobre", "novembre", "décembre"]
 
 
+def jour_lettre(d):
+    """date -> « lundi 26 octobre 2026 »."""
+    jour = "1er" if d.day == 1 else str(d.day)
+    return f"{JOURS[d.weekday()]} {jour} {MOIS[d.month - 1]} {d.year}"
+
+
 def date_heure_lettre(d):
     """datetime -> « jeudi 29 octobre 2026 à 10 h » / « … à 10 h 30 »."""
     jour = "1er" if d.day == 1 else str(d.day)
@@ -247,6 +394,14 @@ def main():
             print("  agenda partagé -> ⋮ -> Paramètres de l'agenda -> « ID de l'agenda » (ou l'adresse")
             print("  iCal / XML : l'identifiant est la longue suite de lettres et chiffres).")
             print("Puis teste l'écriture : python calendrier.py --evenement-test <ID>")
+    elif "--semaine" in args:
+        uid = args[args.index("--semaine") + 1] if len(args) > args.index("--semaine") + 1 else ""
+        auj = date.today()
+        evts = lister_evenements(uid, auj, auj + timedelta(days=6))
+        print(f"{len(evts)} rendez-vous du {auj:%d/%m} au {auj + timedelta(days=6):%d/%m} :")
+        for e in evts:
+            print(f"  {e['debut']:%a %d/%m} {plage(e):22} {e['titre'][:50]}"
+                  + (f"  [{e['lieu'][:30]}]" if e["lieu"] else ""))
     elif "--evenement-test" in args:
         uid = args[args.index("--evenement-test") + 1] if len(args) > args.index("--evenement-test") + 1 else ""
         debut = (datetime.now() + timedelta(hours=1)).replace(second=0, microsecond=0)

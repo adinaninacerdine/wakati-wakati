@@ -1,6 +1,6 @@
 {# Barre laterale partagee — modifier ICI et nulle part ailleurs.
    Chaque page passe la variable `page` :
-   recherche | courriers | tableau | visa | nouveau | courrier | banque | parametres #}
+   recherche | courriers | tableau | visa | nouveau | courrier | banque | parametres | agenda | rdv #}
 <aside class="barre">
   <div class="marque-zone">
     <div class="marque">W A K A T I</div>
@@ -30,11 +30,6 @@
     <a class="item {% if page == 'nouveau' %}actif{% endif %}" href="{{ url_for('courrier.preparer') }}">
       <span class="ico">＋</span> Nouveau courrier
     </a>
-    {% if courrier_responsable %}
-    <a class="item {% if page == 'rdv' %}actif{% endif %}" href="{{ url_for('courrier.rdv') }}">
-      <span class="ico">◷</span> Programmer un RDV
-    </a>
-    {% endif %}
     <a class="item {% if page == 'courrier' %}actif{% endif %}" href="{{ url_for('courrier.liste') }}">
       <span class="ico">✉</span> Courrier de réponse
       {% if cpt_courrier and cpt_courrier.en_retard %}<span class="pastille">{{ cpt_courrier.en_retard }}</span>{% endif %}
@@ -47,6 +42,16 @@
       <span class="ico">⚙</span> Paramètres
     </a>
     {% endif %}
+    {% endif %}
+
+    {% if courrier_actif and courrier_responsable %}
+    <div class="rubrique">Agenda</div>
+    <a class="item {% if page == 'agenda' %}actif{% endif %}" href="{{ url_for('courrier.agenda') }}">
+      <span class="ico">▦</span> Agenda Direction
+    </a>
+    <a class="item {% if page == 'rdv' %}actif{% endif %}" href="{{ url_for('courrier.rdv') }}">
+      <span class="ico">◷</span> Programmer un RDV
+    </a>
     {% endif %}
 
     <div class="rubrique">Zoho</div>

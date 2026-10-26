@@ -447,6 +447,97 @@ def notify_email_smtp(doc, pdf_bytes=None, attach=False):
         return False, f"SMTP — {exc}"
 
 
+# ===========================================================================
+# 2 bis. MESSAGES LIBRES (rappels d'agenda, programme du jour)
+# ===========================================================================
+def message_cliq_personne(email, texte):
+    """Message privé Cliq à une personne de l'organisation (par son e-mail).
+    Même scope que le canal (ZohoCliq.Webhooks.CREATE). Retourne (ok, detail)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return False, "adresse e-mail absente"
+    try:
+        token = _cliq_token()
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+    try:
+        resp = requests.post(
+            f"{CLIQ_API}/buddies/{email}/message",
+            headers={"Authorization": f"Zoho-oauthtoken {token}",
+                     "Content-Type": "application/json"},
+            json={"text": texte[:4000]}, timeout=20)
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+    if resp.status_code in (200, 201, 204):
+        return True, f"Cliq — message privé à {email}"
+    if resp.status_code == 401:
+        CLIQ_CACHE.unlink(missing_ok=True)
+    return False, f"Cliq HTTP {resp.status_code} : {resp.text[:200]}"
+
+
+def message_cliq_canal(texte):
+    """Message texte dans le canal GED. Retourne (ok, detail)."""
+    channel = _get("CLIQ_CHANNEL", "")
+    if not channel:
+        return False, "CLIQ_CHANNEL non configuré"
+    try:
+        token = _cliq_token()
+        resp = requests.post(
+            f"{CLIQ_API}/channelsbyname/{channel}/message",
+            headers={"Authorization": f"Zoho-oauthtoken {token}",
+                     "Content-Type": "application/json"},
+            json={"text": texte[:4000]}, timeout=20)
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+    if resp.status_code in (200, 201, 204):
+        return True, f"Cliq — posté dans #{channel}"
+    return False, f"Cliq HTTP {resp.status_code} : {resp.text[:200]}"
+
+
+def envoyer_email(destinataires, sujet, texte):
+    """E-mail texte à des destinataires choisis (API Zoho Mail, repli SMTP).
+    Retourne (ok, detail)."""
+    to = [d.strip() for d in (destinataires or []) if d and "@" in d]
+    if not to:
+        return False, "aucun destinataire"
+    expediteur = _get("MAIL_FROM_ADDRESS", "")
+    detail_api = ""
+    if str(_get("EMAIL_MODE", "api")).lower() != "smtp" and expediteur:
+        try:
+            token = _mail_token()
+            account_id = _resoudre_account_id()
+            resp = requests.post(
+                f"{MAIL_API}/accounts/{account_id}/messages",
+                headers={"Authorization": f"Zoho-oauthtoken {token}",
+                         "Content-Type": "application/json"},
+                json={"fromAddress": expediteur, "toAddress": ",".join(to),
+                      "subject": sujet, "content": texte,
+                      "mailFormat": "plaintext", "askReceipt": "no"},
+                timeout=30)
+            if resp.status_code in (200, 201):
+                return True, f"e-mail envoyé à {', '.join(to)}"
+            if resp.status_code == 401:
+                MAIL_CACHE.unlink(missing_ok=True)
+            detail_api = f"API HTTP {resp.status_code} : {resp.text[:200]}"
+        except Exception as exc:  # noqa: BLE001
+            detail_api = str(exc)
+    if _get("SMTP_USER", "") and _get("SMTP_PASS", ""):
+        msg = EmailMessage()
+        msg["Subject"] = sujet
+        msg["From"] = _get("MAIL_FROM", "") or _get("SMTP_USER", "")
+        msg["To"] = ", ".join(to)
+        msg.set_content(texte)
+        try:
+            with smtplib.SMTP_SSL(_get("SMTP_HOST", "smtp.zoho.com"), _get("SMTP_PORT", 465),
+                                  context=ssl.create_default_context(), timeout=20) as srv:
+                srv.login(_get("SMTP_USER", ""), _get("SMTP_PASS", ""))
+                srv.send_message(msg)
+            return True, f"e-mail (SMTP) envoyé à {', '.join(to)}"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"{detail_api} | SMTP : {exc}".strip(" |")
+    return False, detail_api or "e-mail non configuré (MAIL_FROM_ADDRESS)"
+
+
 def notify_email(doc, pdf_bytes=None, attach=False):
     """Aiguille selon EMAIL_MODE, avec bascule automatique si l'API echoue."""
     mode = str(_get("EMAIL_MODE", "api")).lower()
