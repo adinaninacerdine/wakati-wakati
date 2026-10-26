@@ -131,12 +131,27 @@
     <section class="bloc" id="section-attente">
       <h2>
         <span>2 &nbsp;·&nbsp; En attente de signature
-          {% if en_attente %}<span class="compte">{{ en_attente|length }}</span>{% endif %}
+          {% if en_attente or a_viser %}<span class="compte">{{ (en_attente|length) + (a_viser|length) }}</span>{% endif %}
         </span>
         <a class="lien-action" href="{{ url_for('actualiser') }}">Vérifier maintenant</a>
       </h2>
       <div class="corps">
-        {% if en_attente %}
+        {% if en_attente or a_viser %}
+          {# Documents chez la Direction (circuit de visa de la GED) #}
+          {% for d in a_viser %}
+          <div class="dossier">
+            <div>
+              <div class="objet">{{ d.objet }}</div>
+              <div class="meta">{{ d.service_lib }} &middot; {{ d.type_lib }}{% if d.correspondant %} &middot; {{ d.correspondant }}{% endif %} &middot; déposé le {{ d.depose_affiche }} &middot; {% if d.sens == 'sortant' %}à signer{% else %}à viser{% endif %}{% if d.nb_retours %} &middot; {{ d.nb_retours }}e retour corrigé{% endif %}</div>
+            </div>
+            <span class="etat {% if d.jours >= 3 %}tarde{% else %}encours{% endif %}">
+              {% if d.jours == 0 %}Aujourd'hui
+              {% elif d.jours == 1 %}1 jour
+              {% else %}{{ d.jours }} jours{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+          {# Envois Zoho Sign en cours #}
           {% for d in en_attente %}
           <div class="dossier">
             <div>
@@ -307,7 +322,7 @@
           <div class="dossier">
             <div>
               <div class="objet">{{ c.objet }}</div>
-              <div class="meta">{{ c.service_lib }} &middot; {{ c.type_lib }}{% if c.correspondant %} &middot; {{ c.correspondant }}{% endif %} &middot; {{ c.date_doc }}</div>
+              <div class="meta">{{ c.service_lib }} &middot; {{ c.type_lib }}{% if c.correspondant %} &middot; {{ c.correspondant }}{% endif %} &middot; {% if c.date_doc|length >= 10 and c.date_doc[4] == '-' %}{{ c.date_doc[8:10] }}/{{ c.date_doc[5:7] }}/{{ c.date_doc[:4] }}{% else %}{{ c.date_doc }}{% endif %}</div>
             </div>
             <button type="button" class="mineur" onclick="choisir(this)"
                     data-fichier="{{ c.fichier }}" data-service="{{ c.service }}"
@@ -491,7 +506,8 @@ function majLibelle(prefixe) {
     }
 }
 
-// Entrant -> visa interne du DG, gratuit. Sortant -> Zoho Sign.
+// Entrant -> visa interne du DG. Sortant -> approbation du DG puis signature
+// manuscrite (Zoho Sign viendra plus tard).
 // L'ecran doit annoncer quel circuit va etre emprunte.
 function majCircuit(entrant) {
     var t = document.getElementById('titre_soumission');
@@ -505,9 +521,9 @@ function majCircuit(entrant) {
         if (n) { n.textContent = "Le DG consultera le document dans l'application et consignera ses observations."; }
     } else {
         if (t) { t.innerHTML = "1 &nbsp;·&nbsp; Soumettre un courrier à la signature"; }
-        if (f) { f.textContent = 'Projet de courrier (PDF)'; }
-        if (b) { b.textContent = 'Envoyer à la signature'; }
-        if (n) { n.textContent = "Signature électronique Zoho Sign. Numéro attribué à l'archivage."; }
+        if (f) { f.textContent = 'Document à signer (PDF)'; }
+        if (b) { b.textContent = 'Transmettre au DG pour signature'; }
+        if (n) { n.textContent = "Le DG approuve le document dans l'application ; l'original est ensuite imprimé, signé, scanné puis archivé. Numéro attribué à l'archivage."; }
     }
 }
 

@@ -988,7 +988,10 @@ def infos_a_classer(fichier_local):
     ref, d = _visa_par_fichier(fichier_local)
     if not d:
         return {}
-    infos = {"sens": d.get("sens", ""), "correspondant": d.get("correspondant", "")}
+    infos = {"sens": d.get("sens", ""), "correspondant": d.get("correspondant", ""),
+             # Objet tel que saisi au dépôt (casse et accents d'origine), plutôt
+             # que reconstruit depuis le nom de fichier en majuscules.
+             "objet": d.get("objet", "")}
     rep_ref = d.get("reponse_ref")
     if rep_ref:
         rep = reponses().get(rep_ref)

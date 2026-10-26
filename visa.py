@@ -233,6 +233,7 @@ def _enrichir(ref, d, services, types):
         "service_lib": services.get(d.get("service", ""), d.get("service") or "—"),
         "type_lib": types.get(d.get("type_doc", ""), d.get("type_doc") or "—"),
         "date_doc": d.get("date_doc", ""),
+        "date_doc_affiche": _date_fr(d.get("date_doc", "")),
         "sens": d.get("sens", "entrant"),
         "correspondant": d.get("correspondant", ""),
         "depose_affiche": depose.strftime("%d/%m/%Y"),
@@ -246,6 +247,14 @@ def _enrichir(ref, d, services, types):
         "reponse_ref": d.get("reponse_ref", ""),
         "nb_retours": d.get("nb_retours", 0),
     }
+
+
+def _date_fr(valeur):
+    """2026-10-28 -> 28/10/2026 ; laisse intact ce qui n'est pas une date ISO."""
+    v = str(valeur or "")
+    if len(v) >= 10 and v[4] == "-" and v[7] == "-":
+        return f"{v[8:10]}/{v[5:7]}/{v[0:4]}"
+    return v
 
 
 STATUTS_A_VISER = ("a_viser", "attente")

@@ -233,7 +233,9 @@ def nettoyer_texte(texte):
         texte = texte.replace(char, repl)
     texte = texte.replace(" ", "_")
     texte = re.sub(r"[^A-Z0-9_\-]", "", texte)
-    return texte[:60]
+    # « TERMINAUX — ANNEE » donnait TERMINAUX__ANNEE : un seul séparateur.
+    texte = re.sub(r"_{2,}", "_", texte).strip("_")
+    return texte[:60] or "SANS_OBJET"
 
 
 def est_un_pdf(chemin):
@@ -329,7 +331,7 @@ def lister_a_classer():
             "service": infos.get("service") or service,
             "type_doc": infos.get("type_doc") or type_doc,
             "date_doc": infos.get("date_doc") or date_doc,
-            "objet": objet.replace("_", " "),
+            "objet": infos.get("objet") or objet.replace("_", " "),
             "service_lib": SERVICES.get(service, service or "Service inconnu"),
             "type_lib": TYPES.get(type_doc, type_doc or "Type inconnu"),
             "correspondant": memo.get("correspondant") or infos.get("correspondant", ""),
