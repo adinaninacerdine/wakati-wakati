@@ -497,7 +497,7 @@ def ligne_entete(connecteur, classeur, feuille, essais=10):
                 "method": "worksheet.records.fetch", "worksheet_name": feuille,
                 "header_row": h, "records_start_index": 1, "count": 3})
         except Exception:  # noqa: BLE001
-            break
+            continue
         lot = corps.get("records") or []
         if not lot:
             continue
@@ -506,7 +506,82 @@ def ligne_entete(connecteur, classeur, feuille, essais=10):
             meilleure, score_max = h, score
         if score >= 3:
             break
-    return meilleure
+    return meilleure, max(score_max, 0)
+
+
+# --- Lecture brute des cellules (repli quand l'API « records » ne trouve
+#     pas les intitulés, par exemple sous un titre fusionné) -----------------
+def _cellules(connecteur, classeur, feuille, debut, fin, nb_col=30):
+    """{n° de ligne: [valeurs]} pour les lignes debut..fin."""
+    corps = _appel_sheet(connecteur, classeur, {
+        "method": "worksheet.content.get", "worksheet_name": feuille,
+        "start_row": debut, "start_column": 1, "end_row": fin, "end_column": nb_col})
+    lignes = {}
+    for r in corps.get("range_details") or corps.get("data") or []:
+        idx = int(r.get("row_index") or r.get("row") or 0)
+        cases = [""] * nb_col
+        for c in r.get("row_details") or r.get("columns") or []:
+            j = int(c.get("column_index") or c.get("column") or 0) - 1
+            if 0 <= j < nb_col:
+                val = c.get("content")
+                if val in (None, ""):
+                    val = c.get("value", "")
+                formule = str(c.get("formula") or "")
+                m = re.search(r'HYPERLINK\(\s*"([^"]+)"', formule, re.I)
+                if m:  # lien caché derrière un libellé
+                    val = f"{val} {m.group(1)}".strip()
+                cases[j] = "" if val is None else str(val)
+        if idx:
+            lignes[idx] = cases
+    return lignes
+
+
+def lignes_feuille_brutes(connecteur, classeur, feuille, taille_lot=400, nb_col=30):
+    """Même sortie que lignes_feuille, en lisant les cellules : la ligne
+    d'intitulés est cherchée dans les 15 premières lignes."""
+    tete = _cellules(connecteur, classeur, feuille, 1, 15, nb_col)
+    h, score_max = 1, -1
+    for idx in sorted(tete):
+        score = _score_entetes([v for v in tete[idx] if v])
+        if score > score_max:
+            h, score_max = idx, score
+    entetes = [v.strip() or f"Colonne {j + 1}" for j, v in enumerate(tete.get(h, []))]
+    debut, vides = h + 1, 0
+    while vides < 2:
+        bloc = _cellules(connecteur, classeur, feuille, debut, debut + taille_lot - 1, nb_col)
+        if not any(any(v for v in l) for l in bloc.values()):
+            vides += 1
+        for idx in sorted(bloc):
+            valeurs = bloc[idx]
+            if any(valeurs):
+                yield {e: v for e, v in zip(entetes, valeurs) if not e.startswith("Colonne ") or v}
+        debut += taille_lot
+
+
+def diagnostic_feuille(ref, feuille, afficher=print):
+    """Montre ce que Zoho renvoie pour une feuille : pour régler l'import."""
+    classeur, zc = id_classeur(ref), _connecteur()
+    afficher(f"=== Diagnostic de « {feuille} » ===")
+    for h in range(1, 7):
+        try:
+            corps = _appel_sheet(zc, classeur, {
+                "method": "worksheet.records.fetch", "worksheet_name": feuille,
+                "header_row": h, "records_start_index": 1, "count": 2})
+            lot = corps.get("records") or []
+            afficher(f"records, en-tête ligne {h} : {list(lot[0].keys())[:10] if lot else '(vide)'}")
+        except Exception as exc:  # noqa: BLE001
+            afficher(f"records, en-tête ligne {h} : ERREUR {str(exc)[:150]}")
+    try:
+        brut = _cellules(zc, classeur, feuille, 1, 8, 12)
+        for idx in sorted(brut):
+            afficher(f"cellules ligne {idx} : {[v[:25] for v in brut[idx] if v]}")
+        if not brut:
+            corps = _appel_sheet(zc, classeur, {
+                "method": "worksheet.content.get", "worksheet_name": feuille,
+                "start_row": 1, "start_column": 1, "end_row": 3, "end_column": 6})
+            afficher("réponse brute : " + json.dumps(corps, ensure_ascii=False)[:800])
+    except Exception as exc:  # noqa: BLE001
+        afficher(f"cellules : ERREUR {str(exc)[:300]}")
 
 
 def lignes_feuille(connecteur, classeur, feuille, taille_lot=500, entete=1):
@@ -538,8 +613,7 @@ def _depuis_ligne_archive(ligne, source, feuille, rang):
         if valeur in (None, "") or entete == "row_index":
             continue
         valeur = str(valeur).strip()
-        if valeur.startswith("http"):
-            liens.append(valeur)
+        liens += re.findall(r"https?://[^\s\"'<>]+", valeur)
         champ = inverse.get(_normaliser(entete))
         if champ and champ not in d:
             d[champ] = valeur
@@ -555,8 +629,8 @@ def _depuis_ligne_archive(ligne, source, feuille, rang):
     if not nom or nom.startswith("http"):
         num = d.get("numero") or f"{rang:04d}"
         nom = f"ARCHIVE {feuille} n°{num} — {(d.get('objet') or '')[:70]}".strip(" —")
-    lien = d.get("lien", "") if str(d.get("lien", "")).startswith("http") else ""
-    lien = lien or (liens[0] if liens else "")
+    urls_lien = re.findall(r"https?://[^\s\"'<>]+", str(d.get("lien", "")))
+    lien = urls_lien[0] if urls_lien else (liens[0] if liens else "")
     correspondant = d.get("correspondant") or d.get("expediteur") or d.get("destinataire") or ""
     if not correspondant and d.get("dossier"):
         # Le dernier dossier porte souvent le nom du correspondant
@@ -590,8 +664,14 @@ def depuis_sheet_externe(ref, feuilles=None, libelle="", apercu=False, afficher=
     n = 0
     for feuille in feuilles:
         nb_feuille, exemples, entetes = 0, [], []
-        h = ligne_entete(zc, classeur, feuille)
-        for rang, ligne in enumerate(lignes_feuille(zc, classeur, feuille, entete=h), 1):
+        h, score = ligne_entete(zc, classeur, feuille)
+        if score >= 2:
+            source_lignes = lignes_feuille(zc, classeur, feuille, entete=h)
+            mode = f"intitulés de colonnes en ligne {h}"
+        else:
+            source_lignes = lignes_feuille_brutes(zc, classeur, feuille)
+            mode = "lecture des cellules"
+        for rang, ligne in enumerate(source_lignes, 1):
             if not entetes:
                 entetes = [k for k in ligne.keys() if k != "row_index"]
             doc = _depuis_ligne_archive(ligne, source, feuille, rang)
@@ -605,8 +685,7 @@ def depuis_sheet_externe(ref, feuilles=None, libelle="", apercu=False, afficher=
                 n += 1
         if apercu:
             n += nb_feuille
-            afficher(f"\n--- Feuille « {feuille} » : {nb_feuille} document(s) "
-                     f"(intitulés de colonnes en ligne {h})")
+            afficher(f"\n--- Feuille « {feuille} » : {nb_feuille} document(s) ({mode})")
             inverse = {v: c for c, vs in _SYNONYMES.items() for v in vs}
             for e in entetes:
                 afficher(f"    {str(e)[:32]:32} -> {inverse.get(_normaliser(e), '(mot-clé)')}")
@@ -931,7 +1010,10 @@ def main():
         ref = _option(args, "--archives-sheet")
         feuilles = [f.strip() for f in (_option(args, "--feuilles", "") or "").split(",") if f.strip()]
         libelle = _option(args, "--libelle", "") or ""
-        if "--apercu" in args:
+        if "--diagnostic" in args:
+            for f in feuilles or feuilles_classeur(_connecteur(), id_classeur(ref)):
+                diagnostic_feuille(ref, f)
+        elif "--apercu" in args:
             n = depuis_sheet_externe(ref, feuilles or None, libelle, apercu=True)
             print(f"\nAperçu : {n} document(s) seraient indexés. Rien n'a été écrit.")
         else:
