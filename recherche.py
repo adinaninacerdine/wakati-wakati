@@ -530,8 +530,9 @@ def _cellules(connecteur, classeur, feuille, debut, fin, nb_col=30):
                     val = c.get("value", "")
                 formule = str(c.get("formula") or "")
                 m = re.search(r'HYPERLINK\(\s*"([^"]+)"', formule, re.I)
-                if m:  # lien caché derrière un libellé
-                    val = f"{val} {m.group(1)}".strip()
+                url = c.get("url") or c.get("hyperlink") or (m.group(1) if m else "")
+                if url and url not in str(val):  # lien caché derrière « Ouvrir »
+                    val = f"{val} {url}".strip()
                 cases[j] = "" if val is None else str(val)
         if idx:
             lignes[idx] = cases
@@ -679,13 +680,10 @@ def depuis_sheet_externe(ref, feuilles=None, libelle="", apercu=False, afficher=
     n = 0
     for feuille in feuilles:
         nb_feuille, exemples, entetes = 0, [], []
-        h, score = ligne_entete(zc, classeur, feuille)
-        if score >= 2:
-            source_lignes = lignes_feuille(zc, classeur, feuille, entete=h)
-            mode = f"intitulés de colonnes en ligne {h}"
-        else:
-            source_lignes = lignes_feuille_brutes(zc, classeur, feuille)
-            mode = "lecture des cellules"
+        # Lecture des cellules : c'est la seule qui rend l'adresse des liens
+        # (« Ouvrir » -> WorkDrive) ; l'API « records » ne donne que le libellé.
+        source_lignes = lignes_feuille_brutes(zc, classeur, feuille)
+        mode = "lecture des cellules, liens compris"
         for rang, ligne in enumerate(source_lignes, 1):
             if not entetes:
                 entetes = [k for k in ligne.keys() if k != "row_index"]
