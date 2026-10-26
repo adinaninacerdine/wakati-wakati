@@ -1370,9 +1370,24 @@ def _ref_sortant(rep):
 # droite, grand W WAKATI en filigrane au centre, pied de page avec l'icône
 # Huri Money et l'adresse. Les images sont dans le dossier entete/.
 #
-# Mesures relevées dans les fichiers Word (A4, marges 21,2 mm à gauche et à
-# droite, 24,7 mm en haut et en bas, en-tête à 12,5 mm du bord).
+# Modèle de lettre rectifié par la Direction (26 octobre 2026) : marges
+# 21,2 mm à gauche et à droite, 17,5 mm en haut, 16 mm en bas ; logos HD.
+# Positions relevées dans Modele_Standard_Lettre_Huri_Money.docx :
+#   logo WAKATI      16,4 mm de côté, aligné sur la marge gauche
+#   logo Huri Money  45,5 mm de large, aligné sur la marge droite
+#   (les deux logos centrés verticalement sur la même ligne, à 17,6 mm du haut)
+#   filigrane        127 mm, centré sur la page, transparence dans l'image
+#   pied             icône 9,5 mm centrée à 277,4 mm, adresse en Times 8
 DOSSIER_ENTETE = RACINE / "entete"
+
+LOGO_WAKATI_W = 16.4
+LOGO_HM_W = 45.5
+AXE_LOGOS_Y = 17.6       # milieu vertical des deux logos
+FILIGRANE_W = 127.0
+ICONE_W = 9.5
+ICONE_Y = 277.4
+HAUT_CORPS = 33.7        # première ligne de texte sous les logos
+BAS_CORPS = 24.0         # le texte s'arrête au-dessus de l'icône du pied
 
 NAVY = (11, 31, 58)        # #0B1F3A — titres de la décision
 ROUGE = (140, 22, 33)      # #8C1621 — numéros d'article
@@ -1486,7 +1501,8 @@ def _papier(famille_police, filigrane_projet):
             # porte déjà sa transparence (comme dans le modèle Word).
             fil = image("filigrane.png")
             if fil:
-                self.image(fil, x=(210 - 85.5) / 2, y=(297 - 85.5) / 2, w=85.5)
+                self.image(fil, x=(210 - FILIGRANE_W) / 2, y=(297 - FILIGRANE_W) / 2,
+                           w=FILIGRANE_W)
             if filigrane_projet:
                 with self.local_context(fill_opacity=0.10, text_color=(140, 22, 33)):
                     self.set_font(nom_police, "B", 80)
@@ -1494,19 +1510,23 @@ def _papier(famille_police, filigrane_projet):
                         self.text(45, 180, "PROJET")
             logo = image("logo_wakati.png")
             if logo:
-                self.image(logo, x=MARGE_G + 2.8, y=15.1, w=11.1)
+                self.image(logo, x=MARGE_G, y=AXE_LOGOS_Y - LOGO_WAKATI_W / 2, w=LOGO_WAKATI_W)
             hm = image("logo_hurimoney.png")
             if hm:
-                self.image(hm, x=210 - MARGE_D - 45.5, y=17.8, w=45.5)
+                # Hauteur tirée des proportions de l'image : le logo n'est
+                # jamais déformé.
+                h = LOGO_HM_W * _ratio_image(hm)
+                self.image(hm, x=210 - MARGE_D - LOGO_HM_W, y=AXE_LOGOS_Y - h / 2,
+                           w=LOGO_HM_W, h=h)
             self.set_text_color(*TEXTE)
-            self.set_y(34)
+            self.set_y(HAUT_CORPS)
 
         def footer(self):
             icone = image("icone_hurimoney.png")
             if icone:
-                self.image(icone, x=(210 - 9.5) / 2, y=297 - 23.5, w=9.5)
-            self.set_y(-12.5)
-            self.set_font(nom_police, "", 7.5 if famille_police == "sans" else 9)
+                self.image(icone, x=(210 - ICONE_W) / 2, y=ICONE_Y, w=ICONE_W)
+            self.set_y(ICONE_Y + ICONE_W + 1.8)
+            self.set_font(nom_police, "", 7.5 if famille_police == "sans" else 8)
             self.set_text_color(*GRIS)
             self.cell(0, 4, t(pied), align="C")
             self.set_text_color(*TEXTE)
@@ -1517,9 +1537,19 @@ def _papier(famille_police, filigrane_projet):
         pdf.add_font("Corps", "B", polices[1])
         pdf.add_font("Corps", "I", polices[2])
         pdf.add_font("Corps", "BI", polices[3])
-    pdf.set_margins(MARGE_G, 34, MARGE_D)
-    pdf.set_auto_page_break(True, margin=30)
+    pdf.set_margins(MARGE_G, HAUT_CORPS, MARGE_D)
+    pdf.set_auto_page_break(True, margin=BAS_CORPS)
     return pdf, t
+
+
+def _ratio_image(chemin):
+    """hauteur / largeur de l'image."""
+    try:
+        from PIL import Image  # noqa: PLC0415
+        with Image.open(chemin) as im:
+            return im.size[1] / im.size[0]
+    except Exception:  # noqa: BLE001
+        return 0.3
 
 
 def generer_pdf(rep, chemin, filigrane=False):
@@ -1538,26 +1568,30 @@ def _paragraphes(texte):
 
 
 def _pdf_lettre(rep, filigrane):
-    """Modèle standard de lettre : Times 11, blocs alignés à gauche,
-    signature à droite."""
+    """Modèle standard de lettre : Times 11 en interligne simple, blocs
+    alignés à gauche, signature à droite. Espacements du modèle Word :
+    20 pt après la fonction et la date, 15 pt après chaque bloc, 35 pt avant
+    la signature, 6 lignes réservées entre le nom et la fonction."""
     pdf, t = _papier("serif", filigrane)
+    pdf.c_margin = 0  # le texte part pile sur la marge, comme dans Word
     pdf.add_page()
     f = pdf.police
     fiche = correspondant(rep.get("correspondant_id")) or {}
     sig = signataire(rep.get("signataire", "")) or {}
-    L = 5.2  # interligne Times 11
+    L = 4.45   # interligne simple Times 11
+    APRES = 5.3  # 15 pt
 
     # Fonction de l'émetteur
     pdf.set_font(f, "B", 11)
     pdf.multi_cell(0, L, t(sig.get("fonction") or "[à compléter : signataire]"),
                    new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(7)
+    pdf.ln(7.05)
 
     # Lieu et date
     pdf.set_font(f, "", 11)
     date_c = rep.get("date_courrier") or datetime.now().date().isoformat()
     pdf.cell(0, L, t(f"Moroni, le {date_longue(date_c)}"), new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(7)
+    pdf.ln(7.05)
 
     # Destinataire
     nom = fiche.get("civilite") or fiche.get("nom") or ""
@@ -1577,47 +1611,45 @@ def _pdf_lettre(rep, filigrane):
     pdf.set_font(f, "", 11)
     for ligne in lignes:
         pdf.multi_cell(0, L, t(ligne), new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(5)
+    pdf.ln(APRES)
 
     # Références
     ref = reference_imprimee(rep) or "N°…… (attribué à la validation)"
+    # Comme le modèle : toute la ligne de référence est soulignée
     pdf.set_font(f, "U", 11)
-    pdf.write(L, t("Réf. :"))
-    pdf.set_font(f, "", 11)
-    pdf.write(L, t(f" {ref}"))
+    pdf.write(L, t(f"Réf. : {ref}"))
     pdf.ln(L)
     if rep.get("ref_entrant"):
         vref = rep["ref_entrant"]
         if rep.get("date_entrant"):
             vref += f" du {date_courte(rep['date_entrant'])}"
         pdf.set_font(f, "U", 11)
-        pdf.write(L, t("V/Réf. :"))
-        pdf.set_font(f, "", 11)
-        pdf.write(L, t(f" {vref}"))
+        pdf.write(L, t(f"V/Réf. : {vref}"))
         pdf.ln(L)
-    pdf.ln(5)
+    pdf.ln(APRES)
 
     # Objet
+    # « Objet » souligné, la suite en gras seulement
     pdf.set_font(f, "BU", 11)
-    pdf.write(L, t("Objet :"))
+    pdf.write(L, t("Objet "))
     pdf.set_font(f, "B", 11)
-    pdf.write(L, t(f" {rep.get('objet') or '[à compléter : objet]'}"))
+    pdf.write(L, t(f": {rep.get('objet') or '[à compléter : objet]'}"))
     pdf.ln(L)
-    pdf.ln(5)
+    pdf.ln(APRES)
 
-    # Corps
+    # Corps : aligné à gauche, comme le modèle
     pdf.set_font(f, "", 11)
     for paragraphe in _paragraphes(rep.get("corps")):
-        pdf.multi_cell(0, L, t(paragraphe), align="J", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(5)
+        pdf.multi_cell(0, L, t(paragraphe), align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(APRES)
 
-    # Signature : nom en gras, espace de signature, fonction
-    if pdf.get_y() > 220:
+    # Signature : nom en gras, 6 lignes pour la signature et le cachet, fonction
+    if pdf.get_y() > 297 - BAS_CORPS - 54:
         pdf.add_page()
-    pdf.ln(10)
+    pdf.ln(L + 12.35)  # ligne vide + 35 pt
     pdf.set_font(f, "B", 11)
     pdf.cell(0, L, t(sig.get("nom") or ""), align="R", new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(28)
+    pdf.ln(6 * L)
     pdf.set_font(f, "", 11)
     pdf.cell(0, L, t(_sans_article(sig.get("fonction")) or ""), align="R",
              new_x="LMARGIN", new_y="NEXT")
