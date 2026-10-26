@@ -102,22 +102,57 @@ def _entetes():
     return {"Authorization": f"Zoho-oauthtoken {_jeton()}"}
 
 
-def lister_calendriers():
-    """Agendas visibles par le compte du jeton : les siens et ceux qu'on lui
-    a partagés. [{uid, nom, categorie, droit, couleur}]"""
-    r = requests.get(f"{_config()['api']}/calendars", headers=_entetes(), timeout=30)
-    data = r.json()
-    if r.status_code != 200 or "calendars" not in data:
-        raise RuntimeError(f"Liste des agendas : HTTP {r.status_code} {str(data)[:300]}")
-    res = []
-    for cal in data.get("calendars", []):
-        res.append({
-            "uid": cal.get("uid", ""),
-            "nom": cal.get("name", "(sans nom)"),
-            "categorie": cal.get("category", ""),
-            "droit": cal.get("privilege") or cal.get("permission") or "",
-            "couleur": cal.get("color", ""),
-        })
+CATEGORIES = ("", "shared", "subscribed", "group", "all")
+
+
+def _appel_calendriers(categorie=""):
+    params = {"category": categorie} if categorie else None
+    r = requests.get(f"{_config()['api']}/calendars", headers=_entetes(),
+                     params=params, timeout=30)
+    try:
+        data = r.json()
+    except ValueError:
+        data = {"brut": r.text[:300]}
+    return r.status_code, data
+
+
+def lister_calendriers(journal=None):
+    """Agendas visibles par le compte du jeton : les siens, et ceux qu'on lui
+    a partagés. Zoho range les agendas partagés dans une autre catégorie que
+    les siens : on les interroge toutes. [{uid, nom, categorie, droit, couleur}]
+
+    journal : liste où consigner chaque appel (diagnostic)."""
+    res, vus, premiere_erreur = [], set(), None
+    for cat in CATEGORIES:
+        try:
+            statut, data = _appel_calendriers(cat)
+        except Exception as exc:  # noqa: BLE001
+            statut, data = 0, {"erreur": str(exc)}
+        cals = data.get("calendars") if isinstance(data, dict) else None
+        if journal is not None:
+            journal.append(f"category={cat or '(aucune)'} : HTTP {statut}, "
+                           + (f"{len(cals)} agenda(s)" if cals is not None else str(data)[:200]))
+        if statut != 200 or cals is None:
+            if not cat:
+                premiere_erreur = f"HTTP {statut} {str(data)[:300]}"
+            continue
+        for cal in cals:
+            uid = cal.get("uid") or cal.get("caluid") or ""
+            if not uid or uid in vus:
+                continue
+            vus.add(uid)
+            proprio = cal.get("owner") or cal.get("owner_email") or cal.get("ownerEmail") or ""
+            if isinstance(proprio, dict):
+                proprio = proprio.get("email") or proprio.get("name") or ""
+            res.append({
+                "uid": uid,
+                "nom": cal.get("name", "(sans nom)") + (f" — {proprio}" if proprio else ""),
+                "categorie": cal.get("category") or cat or "",
+                "droit": cal.get("privilege") or cal.get("permission") or "",
+                "couleur": cal.get("color", ""),
+            })
+    if not res and premiere_erreur:
+        raise RuntimeError(f"Liste des agendas : {premiere_erreur}")
     return res
 
 
@@ -200,12 +235,18 @@ def main():
         sys.exit(1)
     if "--tester" in args:
         print("Jeton Zoho Calendar : OK")
-        cals = lister_calendriers()
+        journal = []
+        cals = lister_calendriers(journal)
+        for ligne in journal:
+            print(f"  [{ligne}]")
         print(f"{len(cals)} agenda(s) visible(s) :")
         for c in cals:
             print(f"  {c['uid']}  {c['nom'][:40]:40} {c['categorie']:10} {c['droit']}")
-        if not cals:
-            print("  (aucun) — le compte du jeton n'a pas encore d'agenda partagé.")
+        if len(cals) <= 1:
+            print("\nAgenda du DG absent ? Récupère son identifiant dans Zoho Calendar :")
+            print("  agenda partagé -> ⋮ -> Paramètres de l'agenda -> « ID de l'agenda » (ou l'adresse")
+            print("  iCal / XML : l'identifiant est la longue suite de lettres et chiffres).")
+            print("Puis teste l'écriture : python calendrier.py --evenement-test <ID>")
     elif "--evenement-test" in args:
         uid = args[args.index("--evenement-test") + 1] if len(args) > args.index("--evenement-test") + 1 else ""
         debut = (datetime.now() + timedelta(hours=1)).replace(second=0, microsecond=0)

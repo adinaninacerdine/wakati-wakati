@@ -2988,7 +2988,9 @@ def ecran_parametres():
                              "email": f.get(f"sig_{i}_email", "").strip().lower(),
                              "agenda": agenda,
                              "agenda_nom": (f.get(f"agenda_nom_{agenda}", "")
-                                            or anciens.get(code, {}).get("agenda_nom", ""))
+                                            or (anciens.get(code, {}).get("agenda_nom", "")
+                                                if anciens.get(code, {}).get("agenda") == agenda
+                                                else "agenda saisi à la main"))
                              if agenda else ""})
             if sigs:
                 p["signataires"] = sigs

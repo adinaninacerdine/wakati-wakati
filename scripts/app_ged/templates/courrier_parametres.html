@@ -109,21 +109,17 @@
               <input type="text" name="sig_{{ loop.index0 }}_nom" value="{{ s.nom }}"></div>
             <div class="champ"><label>Adresse</label>
               <input type="email" name="sig_{{ loop.index0 }}_email" value="{{ s.email }}"></div>
-            <div class="champ"><label>Agenda Zoho</label>
-              {% if agendas %}
-              <select name="sig_{{ loop.index0 }}_agenda">
-                <option value="">— invitation par e-mail —</option>
-                {% for a in agendas %}
-                <option value="{{ a.uid }}" {% if s.agenda == a.uid %}selected{% endif %}>{{ a.nom }}{% if a.categorie %} ({{ a.categorie }}){% endif %}</option>
-                {% endfor %}
-              </select>
-              {% else %}
-              <input type="text" value="{{ s.agenda_nom or ('invitation par e-mail' if s.code else '') }}" disabled>
-              <input type="hidden" name="sig_{{ loop.index0 }}_agenda" value="{{ s.agenda or '' }}">
-              {% endif %}
+            <div class="champ"><label>Agenda Zoho (identifiant)</label>
+              <input type="text" name="sig_{{ loop.index0 }}_agenda" value="{{ s.agenda or '' }}"
+                     list="liste_agendas" placeholder="vide = invitation par e-mail" autocomplete="off"
+                     title="{{ s.agenda_nom or '' }}">
+              {% if s.agenda_nom %}<div class="aide">{{ s.agenda_nom }}</div>{% endif %}
             </div>
           </div>
           {% endfor %}
+          <datalist id="liste_agendas">
+            {% for a in agendas %}<option value="{{ a.uid }}">{{ a.nom }}{% if a.categorie %} ({{ a.categorie }}){% endif %}</option>{% endfor %}
+          </datalist>
           {% for a in agendas %}<input type="hidden" name="agenda_nom_{{ a.uid }}" value="{{ a.nom }}">{% endfor %}
           <p class="aide">Vider le code d'une ligne la supprime.</p>
 
@@ -132,8 +128,9 @@
           <p class="aide" style="color:var(--rouge);">{{ agenda_erreur }}</p>
           {% else %}
           <p class="aide" style="margin-top:0;">Un directeur qui a partagé son agenda Zoho avec le compte
-            de la GED (droit « modifier les événements ») apparaît dans la liste : ses rendez-vous y
-            sont créés directement. Sans agenda choisi, il est invité par e-mail depuis l'agenda de la GED.</p>
+            de la GED (droit « modifier les événements ») : choisissez son agenda dans la liste, ou collez
+            son identifiant (Zoho Calendar › agenda partagé › Paramètres › ID de l'agenda). Ses rendez-vous
+            y sont créés directement. Champ vide : il est invité par e-mail depuis l'agenda de la GED.</p>
           <div class="champ" style="max-width:420px;"><label for="agenda_ged">Agenda de la GED (invitations)</label>
             <select id="agenda_ged" name="agenda_ged">
               <option value="">— aucun —</option>
