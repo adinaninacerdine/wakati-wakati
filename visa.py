@@ -505,10 +505,25 @@ def resoumettre(reference):
         flash("Seul un document retourné peut être resoumis.", "error")
         return redirect(url_for("index"))
 
+    # Version corrigée (facultative) : elle remplace le PDF retourné, sous la
+    # même référence. Sans fichier, le document repart tel quel (cas d'une
+    # simple précision apportée hors document).
+    fichier = request.files.get("pdf")
+    corrige = False
+    if fichier and fichier.filename:
+        contenu = fichier.read()
+        if not contenu.startswith(b"%PDF"):
+            flash("Le fichier joint n'est pas un PDF valide : rien n'a été resoumis.", "error")
+            return redirect(url_for("index"))
+        DOSSIER_A_VISER.mkdir(exist_ok=True)
+        (DOSSIER_A_VISER / d["fichier"]).write_bytes(contenu)
+        corrige = True
+
     _remettre_au_visa(d)
     _sauver(donnees)
 
-    flash(f"Courrier « {d.get('objet', '')} » resoumis au visa.", "success")
+    flash(f"Courrier « {d.get('objet', '')} » resoumis au visa"
+          + (" avec sa version corrigée." if corrige else " (document inchangé)."), "success")
     return redirect(url_for("index"))
 
 @bp_visa.route("/visa/<reference>/scan", methods=["POST"])

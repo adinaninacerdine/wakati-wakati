@@ -231,10 +231,14 @@
               Corriger le projet
             </a>
             {% else %}
-            <form method="POST"
-                  action="{{ url_for('visa.resoumettre', reference=r.reference) }}">
-              <button type="submit" class="mineur"
-                      title="Le document corrigé repart au visa de la Direction.">
+            <form method="POST" enctype="multipart/form-data"
+                  action="{{ url_for('visa.resoumettre', reference=r.reference) }}"
+                  style="min-width:230px;">
+              <label style="font-size:12px;">Version corrigée (PDF)</label>
+              <input type="file" name="pdf" accept=".pdf"
+                     style="font-size:12px;margin-bottom:6px;">
+              <button type="submit" class="mineur" style="width:100%;"
+                      title="Le document corrigé repart au visa de la Direction, sous la même référence.">
                 Resoumettre au visa
               </button>
             </form>
