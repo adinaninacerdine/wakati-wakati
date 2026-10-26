@@ -365,7 +365,9 @@ def statistiques():
 # ---------------------------------------------------------------------------
 _SYNONYMES = {
     "nom": ["nom du fichier", "nom fichier", "fichier", "nom du document", "nom document",
-            "document"],
+            "document", "nom du fichier hm", "nom hm", "nom hm26"],
+    "origine": ["nom d origine", "nom origine", "ancien nom", "nom initial"],
+    "date_exacte": ["date exacte", "date complete", "date precise"],
     "service": ["service", "direction", "departement"],
     "type_doc": ["type", "type de document", "nature", "categorie", "nature du document"],
     "date": ["date", "date du document", "date du courrier", "date courrier",
@@ -374,7 +376,7 @@ _SYNONYMES = {
     "objet": ["objet", "objet du courrier", "intitule", "libelle", "titre", "sujet",
               "description"],
     "lien": ["lien zoho", "lien", "url", "lien workdrive", "lien du document",
-             "lien fichier", "lien du fichier"],
+             "lien fichier", "lien du fichier", "ouvrir", "acces"],
     "sens": ["sens", "flux", "type de courrier", "entrant sortant", "arrivee depart"],
     "correspondant": ["correspondant", "organisme", "structure", "tiers", "partenaire",
                       "provenance", "expediteur destinataire"],
@@ -545,7 +547,8 @@ def lignes_feuille_brutes(connecteur, classeur, feuille, taille_lot=400, nb_col=
         score = _score_entetes([v for v in tete[idx] if v])
         if score > score_max:
             h, score_max = idx, score
-    entetes = [v.strip() or f"Colonne {j + 1}" for j, v in enumerate(tete.get(h, []))]
+    entetes = [re.sub(r"\s*https?://\S+", "", v).strip() or f"Colonne {j + 1}"
+               for j, v in enumerate(tete.get(h, []))]
     debut, vides = h + 1, 0
     while vides < 2:
         bloc = _cellules(connecteur, classeur, feuille, debut, debut + taille_lot - 1, nb_col)
@@ -575,6 +578,10 @@ def diagnostic_feuille(ref, feuille, afficher=print):
         brut = _cellules(zc, classeur, feuille, 1, 8, 12)
         for idx in sorted(brut):
             afficher(f"cellules ligne {idx} : {[v[:25] for v in brut[idx] if v]}")
+        corps = _appel_sheet(zc, classeur, {
+            "method": "worksheet.content.get", "worksheet_name": feuille,
+            "start_row": 5, "start_column": 1, "end_row": 5, "end_column": 12})
+        afficher("cellules ligne 5 (brut) : " + json.dumps(corps, ensure_ascii=False)[:1200])
         if not brut:
             corps = _appel_sheet(zc, classeur, {
                 "method": "worksheet.content.get", "worksheet_name": feuille,
@@ -622,7 +629,8 @@ def _depuis_ligne_archive(ligne, source, feuille, rang):
     if not any(d.get(k) for k in ("nom", "objet", "correspondant", "expediteur",
                                   "destinataire", "numero")):
         return None  # ligne vide ou de sous-total
-    date = _date_iso(d.get("date"))
+    # La date la plus précise l'emporte : « Date exacte » avant « Année ».
+    date = _date_iso(d.get("date_exacte")) or _date_iso(d.get("date"))
     if not date and re.match(r"^(19|20)\d{2}$", str(feuille).strip()):
         date = str(feuille).strip()
     nom = d.get("nom", "")
@@ -632,21 +640,28 @@ def _depuis_ligne_archive(ligne, source, feuille, rang):
     urls_lien = re.findall(r"https?://[^\s\"'<>]+", str(d.get("lien", "")))
     lien = urls_lien[0] if urls_lien else (liens[0] if liens else "")
     correspondant = d.get("correspondant") or d.get("expediteur") or d.get("destinataire") or ""
-    if not correspondant and d.get("dossier"):
-        # Le dernier dossier porte souvent le nom du correspondant
-        # (…/Courriers sortants/BCC) ; on saute années et mois.
-        for part in reversed([p.strip() for p in re.split(r"[/\\>]", d["dossier"]) if p.strip()]):
-            n = _normaliser(part)
-            if not re.fullmatch(r"(19|20)\d{2}|\d+|janvier|fevrier|mars|avril|mai|juin|"
-                                r"juillet|aout|septembre|octobre|novembre|decembre", n):
+    parties = [p.strip() for p in re.split(r"[/\\>]", d.get("dossier", "")) if p.strip()]
+    if not correspondant and parties and not re.search(r"\.[a-z0-9]{2,4}$", parties[-1], re.I):
+        # Chemin de DOSSIER (pas de fichier en bout) : le dernier dossier
+        # porte souvent le nom du correspondant (…/Courriers sortants/BCC) ;
+        # on saute années et mois (« 2025 », « 08_Aout »).
+        for part in reversed(parties):
+            n = re.sub(r"^\d+\s*", "", _normaliser(part))
+            if n and not re.fullmatch(r"(19|20)\d{2}|\d+|janvier|fevrier|mars|avril|mai|juin|"
+                                      r"juillet|aout|septembre|octobre|novembre|decembre", n):
                 correspondant = part
                 break
-    return {"nom": nom, "service": d.get("service", ""), "type_doc": d.get("type_doc", ""),
+    # Une colonne « Type » qui donne l'extension (pdf, docx…) n'est pas le
+    # type de document : on laisse le nom HM26 le fournir (DOC, ACC, PV…).
+    type_doc = d.get("type_doc", "")
+    if re.fullmatch(r"\.?(pdf|docx?|xlsx?|jpe?g|png|tiff?|odt|ods|txt|zip)", type_doc.strip(), re.I):
+        type_doc = ""
+    return {"nom": nom, "service": d.get("service", ""), "type_doc": type_doc,
             "date": date, "annee": date[:4], "sens": _sens_lisible(d.get("sens", "")),
             "correspondant": correspondant, "objet": d.get("objet", ""), "lien": lien,
-            "source": source,
-            "mots_cles": " ".join([str(feuille), d.get("numero", ""), d.get("dossier", ""),
-                                   d.get("observations", "")] + autres)}
+            "source": source, "origine": d.get("origine", ""),
+            "mots_cles": " ".join([str(feuille), d.get("numero", ""), d.get("origine", ""),
+                                   " ".join(parties), d.get("observations", "")] + autres)}
 
 
 def depuis_sheet_externe(ref, feuilles=None, libelle="", apercu=False, afficher=print):
