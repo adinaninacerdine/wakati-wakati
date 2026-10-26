@@ -16,6 +16,11 @@ Trois nettoyages, combinables, tous avec aperçu, sauvegarde et retour arrière 
   Archiver (numéro, dossier WorkDrive, registre). Rien n'est archivé
   automatiquement.
 
+  2 bis. --archiver X [X …]
+     Des documents précis (à viser, approuvés ou retournés), quelle que soit
+     leur date, passent dans « Signés, à archiver ». X = une référence VISA-…
+     ou un mot de l'objet ou du correspondant.
+
   3. --supprimer X [X …]
      Retire DÉFINITIVEMENT de la GED des documents de test : ni file du DG,
      ni « à archiver ». X = une référence VISA-… lue dans l'aperçu, ou un mot
@@ -39,6 +44,9 @@ USAGE (dans le conteneur, sur le serveur)
   docker exec ged-wakati python /app/purger_visas.py --approuves \\
       --garder-depuis 2026-10-21 --exclure VISA-20261019-114530
 
+  # un document précis, quelle que soit sa date
+  docker exec ged-wakati python /app/purger_visas.py --archiver "Situation financière"
+
   # application : ajouter --confirm à la même commande
   # retour arrière
   docker exec ged-wakati python /app/purger_visas.py --restaurer /app/a_viser/_retires_20261023-1530
@@ -48,6 +56,7 @@ OPTIONS
   --garder-depuis AAAA-MM-JJ   « à viser » : restent chez le DG les dépôts depuis cette date
   --exclure X [X …]            « à viser » anciens à laisser quand même chez le DG
   --approuves                  vide la section « Approuvés » vers « Signés, à archiver »
+  --archiver X [X …]           documents précis vers « Signés, à archiver » (toute date)
   --supprimer X [X …]          documents de test à retirer définitivement
   --avec-retournes             déplace aussi les « retournés au service » antérieurs à la date
   --avec-signature             retire aussi les anciennes entrées « En attente de signature »
@@ -142,7 +151,7 @@ def purger(args):
 
     visas = visa._charger()
     toutes_refs = {r.upper() for r in visas}
-    inconnues = [x for x in (args.exclure or []) + (args.supprimer or [])
+    inconnues = [x for x in (args.exclure or []) + (args.supprimer or []) + (args.archiver or [])
                  if x.upper().startswith("VISA-") and x.upper() not in toutes_refs]
 
     # --- 1. File « à viser » -------------------------------------------
@@ -172,7 +181,13 @@ def purger(args):
                   if d.get("statut") in STATUTS_A_VISER + ("approuve", "retourne", STATUT_RETIRE)}
     a_supprimer = {r: d for r, d in en_circuit.items() if designe(r, d, args.supprimer)}
 
-    a_deplacer = {r: d for r, d in {**file_retires, **approuves}.items() if r not in a_supprimer}
+    # --- 2 bis. Documents désignés, toute date ------------------------
+    designes = {r: d for r, d in visas.items()
+                if d.get("statut") in STATUTS_A_VISER + ("approuve", "retourne")
+                and designe(r, d, args.archiver)} if args.archiver else {}
+
+    a_deplacer = {r: d for r, d in {**file_retires, **approuves, **designes}.items()
+                  if r not in a_supprimer}
 
     attente = lire_json(FICHIER_ATTENTE, {}) if args.avec_signature and limite else {}
     attente_retires = {r: m for r, m in attente.items()
@@ -197,6 +212,11 @@ def purger(args):
     if args.approuves:
         afficher("APPROUVÉS -> « SIGNÉS, À ARCHIVER »",
                  {r: d for r, d in approuves.items() if r not in a_supprimer})
+    if args.archiver:
+        afficher("DOCUMENTS DÉSIGNÉS -> « SIGNÉS, À ARCHIVER »",
+                 {r: d for r, d in designes.items() if r not in a_supprimer})
+        if not designes:
+            print("  (aucun document en circuit ne correspond — vérifier le mot ou la référence)")
     if args.supprimer:
         afficher("TESTS SUPPRIMÉS DÉFINITIVEMENT (copie gardée en sauvegarde)", a_supprimer)
     if inconnues:
@@ -205,8 +225,7 @@ def purger(args):
         print(f"\n« En attente de signature » à retirer : {len(attente_retires)} sur {len(attente)}")
     if reps_liees:
         print(f"\n{len(reps_liees)} projet(s) de réponse redeviendront « brouillon ».")
-    reste_app = nb_app - len(approuves) if args.approuves else nb_app - \
-        sum(1 for r in a_supprimer if visas[r].get("statut") == "approuve")
+    reste_app = nb_app - sum(1 for r in concernes if visas[r].get("statut") == "approuve")
     reste_file = total - sum(1 for r in concernes if visas[r].get("statut") in STATUTS_A_VISER)
     print(f"\nAprès application : {reste_file} à viser chez le DG, {reste_app} approuvé(s).")
 
@@ -356,6 +375,8 @@ def main():
                    help="« à viser » anciens à laisser chez le DG (référence VISA-… ou mot)")
     p.add_argument("--approuves", action="store_true",
                    help="vide la section « Approuvés » vers « Signés, à archiver »")
+    p.add_argument("--archiver", nargs="+", metavar="X",
+                   help="documents précis vers « Signés, à archiver », toute date (référence VISA-… ou mot)")
     p.add_argument("--supprimer", nargs="+", metavar="X",
                    help="documents de test à retirer définitivement (référence VISA-… ou mot)")
     p.add_argument("--avec-retournes", action="store_true")
@@ -365,7 +386,7 @@ def main():
     args = p.parse_args()
     if args.restaurer:
         restaurer(args.restaurer)
-    elif args.garder_depuis or args.approuves or args.supprimer:
+    elif args.garder_depuis or args.approuves or args.supprimer or args.archiver:
         purger(args)
     else:
         p.print_help()
