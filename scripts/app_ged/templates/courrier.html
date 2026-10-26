@@ -66,6 +66,9 @@
               {% else %}
                 <a class="bouton" href="{{ url_for('courrier.preparer', entrant=e.id) }}">Préparer la réponse</a>
               {% endif %}
+              {% if responsable %}
+              <a class="bouton-mineur" href="{{ url_for('courrier.rdv', entrant=e.id) }}">Programmer un RDV</a>
+              {% endif %}
               <form method="POST" action="{{ url_for('courrier.statut_entrant', eid=e.id) }}"
                     style="display:flex;gap:6px;">
                 {% if e.urgence != 'urgente' %}

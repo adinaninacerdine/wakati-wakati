@@ -198,7 +198,7 @@ label {
   display: block; font-size: 13px; font-weight: 600;
   color: var(--accent-txt); margin-bottom: 4px; letter-spacing: .2px;
 }
-input[type=text], input[type=date], input[type=number],
+input[type=text], input[type=date], input[type=number], input[type=time], input[type=datetime-local],
 select, input[type=file] {
   width: 100%; padding: 8px 10px;
   border: 1px solid var(--navy-bord); border-radius: 4px;

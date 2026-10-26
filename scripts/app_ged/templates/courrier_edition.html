@@ -245,6 +245,23 @@
         {% endif %}
 
         <section class="bloc">
+          <h2><span>Rendez-vous</span>
+            {% if responsable %}<a class="lien-action" href="{{ url_for('courrier.rdv', ref=rep.ref) }}">Programmer</a>{% endif %}</h2>
+          <div class="corps">
+            {% if rep.rdv %}
+            <ul class="historique">
+              {% for r in rep.rdv|reverse %}
+              <li><strong>{{ r.debut|date_courte }} {{ r.debut[11:16] }}</strong> — {{ r.titre }}
+                {% if r.lien %}<a href="{{ r.lien }}" target="_blank" rel="noopener">voir dans l'agenda</a>{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="vide" style="margin:0;">Aucun rendez-vous programmé.</p>
+            {% endif %}
+          </div>
+        </section>
+
+        <section class="bloc">
           <h2>Historique</h2>
           <div class="corps">
             <ul class="historique">

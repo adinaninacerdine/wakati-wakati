@@ -2976,16 +2976,24 @@ def ecran_parametres():
                 if valeur:
                     p[champ] = valeur
             sigs = []
+            anciens = {x.get("code"): x for x in p.get("signataires", [])}
             for i in range(int(f.get("nb_signataires", 0)) + 1):
                 code = f.get(f"sig_{i}_code", "").strip().upper()
                 if not code:
                     continue
+                agenda = f.get(f"sig_{i}_agenda", "").strip()
                 sigs.append({"code": code,
                              "fonction": f.get(f"sig_{i}_fonction", "").strip(),
                              "nom": f.get(f"sig_{i}_nom", "").strip(),
-                             "email": f.get(f"sig_{i}_email", "").strip().lower()})
+                             "email": f.get(f"sig_{i}_email", "").strip().lower(),
+                             "agenda": agenda,
+                             "agenda_nom": (f.get(f"agenda_nom_{agenda}", "")
+                                            or anciens.get(code, {}).get("agenda_nom", ""))
+                             if agenda else ""})
             if sigs:
                 p["signataires"] = sigs
+            if "agenda_ged" in f:
+                p["agenda_ged"] = f.get("agenda_ged", "").strip()
             _ecrire(F_PARAMETRES, p)
         cle = f.get("ia_cle", "").strip()
         if cle:
@@ -2996,9 +3004,147 @@ def ecran_parametres():
         flash("Paramètres enregistrés.", "success")
         return redirect(url_for("courrier.ecran_parametres"))
 
+    agendas, agenda_erreur = [], ""
+    try:
+        import calendrier  # noqa: PLC0415
+        ok, raison = calendrier.disponible()
+        if ok:
+            agendas = calendrier.lister_calendriers()
+        else:
+            agenda_erreur = raison
+    except Exception as exc:  # noqa: BLE001
+        agenda_erreur = f"Zoho Calendar : {exc}"
     return render_template("courrier_parametres.html", page="parametres",
                            p=parametres(), fournisseurs=FOURNISSEURS_IA,
-                           cle=cle_ia_masquee(), **_contexte_commun())
+                           cle=cle_ia_masquee(), agendas=agendas,
+                           agenda_erreur=agenda_erreur, **_contexte_commun())
+
+
+# ---------------------------------------------------------------------------
+# Rendez-vous dans l'agenda d'un directeur (Zoho Calendar)
+# ---------------------------------------------------------------------------
+DUREES_RDV = [(30, "30 min"), (60, "1 h"), (90, "1 h 30"), (120, "2 h"), (180, "3 h")]
+
+
+def _contexte_rdv(entrant_id, ref):
+    """Courrier reçu et/ou projet de réponse auxquels le RDV se rattache."""
+    rep = reponses().get(ref) if ref else None
+    if rep and not entrant_id:
+        entrant_id = rep.get("entrant_id", "")
+    e = entrants().get(entrant_id) if entrant_id else None
+    fiche = correspondant((rep or {}).get("correspondant_id") or (e or {}).get("correspondant_id")) or {}
+    organisation = (fiche.get("organisation") or (rep or {}).get("correspondant_libre")
+                    or (e or {}).get("correspondant") or "")
+    objet = (e or {}).get("objet") or (rep or {}).get("objet_entrant") or (rep or {}).get("objet") or ""
+    return rep, e, entrant_id, organisation, objet, fiche
+
+
+@bp_courrier.route("/rdv", methods=["GET", "POST"])
+@_reserve_responsable
+def rdv():
+    entrant_id = request.values.get("entrant", "")
+    ref = request.values.get("ref", "")
+    rep, e, entrant_id, organisation, objet, fiche = _contexte_rdv(entrant_id, ref)
+    sigs = parametres().get("signataires", [])
+    import calendrier  # noqa: PLC0415
+    ok_cal, raison_cal = calendrier.disponible()
+
+    if request.method == "POST":
+        if not ok_cal:
+            flash(raison_cal, "error")
+            return redirect(request.url)
+        f = request.form
+        sig = next((x for x in sigs if x.get("code") == f.get("directeur")), None)
+        if not sig:
+            flash("Choisissez le directeur dont l'agenda reçoit le rendez-vous.", "error")
+            return redirect(request.url)
+        try:
+            debut = datetime.fromisoformat(f"{f.get('date')}T{f.get('heure')}")
+        except ValueError:
+            flash("Date ou heure invalide.", "error")
+            return redirect(request.url)
+        if debut < datetime.now() - timedelta(minutes=5):
+            flash("Ce rendez-vous est dans le passé : vérifiez la date.", "error")
+            return redirect(request.url)
+        invites = []
+        if not sig.get("agenda") and sig.get("email"):
+            invites.append(sig["email"])  # pas d'agenda partagé : invitation
+        if f.get("inviter_correspondant") == "on" and f.get("email_correspondant", "").strip():
+            invites.append(f["email_correspondant"].strip())
+        agenda = sig.get("agenda") or parametres().get("agenda_ged", "")
+        if not agenda:
+            flash(f"Aucun agenda configuré pour {sig.get('fonction')} ni d'agenda GED par défaut : "
+                  "voir Paramètres › Signataires › Agenda.", "error")
+            return redirect(request.url)
+        ok, info = calendrier.creer_evenement(
+            agenda, f.get("titre", "").strip() or f"RDV — {organisation}", debut,
+            int(f.get("duree", 60) or 60), f.get("lieu", "").strip(),
+            f.get("description", "").strip(), invites, int(f.get("rappel", 30) or 0))
+        if not ok:
+            flash(f"Le rendez-vous n'a pas pu être créé dans Zoho Calendar : {info}", "error")
+            return redirect(request.url)
+
+        trace = {"le": _maintenant(), "par": _qui(), "directeur": sig.get("code"),
+                 "debut": debut.isoformat(timespec="minutes"), "duree": int(f.get("duree", 60) or 60),
+                 "titre": f.get("titre", ""), "lieu": f.get("lieu", ""),
+                 "uid": info.get("uid", ""), "lien": info.get("lien", ""),
+                 "invites": invites}
+        quand = calendrier.date_heure_lettre(debut)
+        complete = False
+        with _verrou:
+            if rep:
+                reps = reponses()
+                r = reps.get(rep["ref"])
+                if r:
+                    r.setdefault("rdv", []).append(trace)
+                    # La lettre « Proposition de rendez-vous » attend cette date
+                    motif = re.compile(r"(\ble\s+)?\[à compléter : date et heure\]")
+                    if motif.search(r.get("corps") or "") and r.get("statut") in ("brouillon", "retourne"):
+                        r["corps"] = motif.sub(f"le {quand}", r["corps"], count=1)
+                        complete = True
+                    _historiser(r, "Rendez-vous programmé",
+                                f"{sig.get('fonction')} — {quand}")
+                    _ecrire(F_REPONSES, reps)
+            if entrant_id:
+                ents = entrants()
+                x = ents.get(entrant_id)
+                if x:
+                    x.setdefault("rdv", []).append(trace)
+                    _ecrire(F_ENTRANTS, ents)
+        _cliq("📅 Rendez-vous programmé", {
+            "Statut": "RDV", "Objet": f.get("titre", "") or objet,
+            "Correspondant": organisation or "-",
+            "Nature": sig.get("fonction", ""), "Date": quand}, info.get("lien", ""))
+        qui = re.sub(r"^Le ", "du ", re.sub(r"^La ", "de la ", sig.get("fonction", "")))
+        flash(f"Rendez-vous programmé dans l'agenda {qui} : {quand}."
+              + (" La date a été reportée dans la lettre." if complete else "")
+              + (" Invitation envoyée." if invites else ""), "success")
+        if rep:
+            return redirect(url_for("courrier.edition", ref=rep["ref"]))
+        return redirect(url_for("courrier.liste"))
+
+    demain = (datetime.now() + timedelta(days=1)).date()
+    while demain.weekday() >= 5:  # pas de RDV proposé le week-end par défaut
+        demain += timedelta(days=1)
+    lien_ged = request.host_url.rstrip("/") + (
+        url_for("courrier.edition", ref=rep["ref"]) if rep else url_for("courrier.liste"))
+    valeurs = {
+        "titre": f"RDV {organisation} — {objet}".strip(" —")[:120] if organisation or objet else "",
+        "date": demain.isoformat(), "heure": "10:00", "duree": 60, "rappel": 30,
+        "lieu": "Locaux Huri Money S.A., Moroni",
+        "description": "\n".join(x for x in (
+            f"Correspondant : {organisation}" if organisation else "",
+            f"Objet du courrier : {objet}" if objet else "",
+            f"Dossier dans la GED : {lien_ged}") if x),
+        "email_correspondant": fiche.get("email", ""),
+        "directeur": "DG",
+    }
+    return render_template("courrier_rdv.html", page="courrier", rep=rep, entrant=e,
+                           organisation=organisation, objet=objet, v=valeurs,
+                           signataires=sigs, durees=DUREES_RDV, cal_ok=ok_cal,
+                           cal_raison=raison_cal, entrant_id=entrant_id,
+                           ref=rep["ref"] if rep else "",
+                           **{k: v for k, v in _contexte_commun().items() if k != "signataires"})
 
 
 @bp_courrier.route("/parametres/tester-ia", methods=["POST"])

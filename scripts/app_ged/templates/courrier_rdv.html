@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Programmer un rendez-vous — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Programmer un rendez-vous</h1>
+    <div class="contexte">
+      {% if rep %}<a class="lien-action" href="{{ url_for('courrier.edition', ref=rep.ref) }}">Retour au projet</a>
+      {% else %}<a class="lien-action" href="{{ url_for('courrier.liste') }}">Retour à la liste</a>{% endif %}
+    </div>
+  </header>
+
+  <div class="contenu">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if not cal_ok %}
+    <div class="encart alerte"><strong>Agenda non relié.</strong> {{ cal_raison }}</div>
+    {% endif %}
+
+    {% if organisation or objet %}
+    <section class="bloc">
+      <h2>Courrier concerné</h2>
+      <div class="corps">
+        <div style="font-weight:600;color:var(--accent-txt);">{{ objet or '(sans objet)' }}</div>
+        <div class="aide">{{ organisation }}</div>
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="bloc">
+      <h2>Rendez-vous</h2>
+      <div class="corps">
+        <form method="POST" action="{{ url_for('courrier.rdv', entrant=entrant_id, ref=ref) }}">
+          <div class="rang">
+            <div class="champ" style="flex:2;">
+              <label for="r_dir">Agenda de</label>
+              <select id="r_dir" name="directeur">
+                {% for s in signataires %}
+                <option value="{{ s.code }}" {% if s.code == v.directeur %}selected{% endif %}>
+                  {{ s.fonction }}{% if s.nom %} — {{ s.nom }}{% endif %}
+                  {% if s.agenda %}(agenda partagé){% elif s.email %}(invitation à {{ s.email }}){% else %}(non configuré){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="champ">
+            <label for="r_titre">Titre</label>
+            <input type="text" id="r_titre" name="titre" value="{{ v.titre }}" required maxlength="200">
+          </div>
+
+          <div class="rang">
+            <div class="champ">
+              <label for="r_date">Date</label>
+              <input type="date" id="r_date" name="date" value="{{ v.date }}" required>
+            </div>
+            <div class="champ">
+              <label for="r_heure">Heure</label>
+              <input type="time" id="r_heure" name="heure" value="{{ v.heure }}" step="900" required>
+            </div>
+            <div class="champ">
+              <label for="r_duree">Durée</label>
+              <select id="r_duree" name="duree">
+                {% for m, lib in durees %}<option value="{{ m }}" {% if m == v.duree %}selected{% endif %}>{{ lib }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="champ">
+              <label for="r_rappel">Rappel</label>
+              <select id="r_rappel" name="rappel">
+                <option value="0">Aucun</option>
+                <option value="15">15 min avant</option>
+                <option value="30" selected>30 min avant</option>
+                <option value="60">1 h avant</option>
+                <option value="1440">La veille</option>
+              </select>
+            </div>
+          </div>
+          <div class="aide" id="r_jour" style="margin:-6px 0 12px;"></div>
+
+          <div class="champ">
+            <label for="r_lieu">Lieu</label>
+            <input type="text" id="r_lieu" name="lieu" value="{{ v.lieu }}">
+          </div>
+
+          <div class="champ">
+            <label for="r_desc">Note pour l'agenda</label>
+            <textarea id="r_desc" name="description" style="min-height:90px;">{{ v.description }}</textarea>
+          </div>
+
+          <div class="rang">
+            <div class="champ" style="flex:0 0 auto;min-width:auto;display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="r_inv" name="inviter_correspondant" style="width:auto;">
+              <label for="r_inv" style="margin:0;">Inviter aussi le correspondant</label>
+            </div>
+            <div class="champ" style="flex:2;">
+              <input type="email" name="email_correspondant" value="{{ v.email_correspondant }}" placeholder="adresse e-mail du correspondant">
+            </div>
+          </div>
+
+          {% if rep %}
+          <p class="aide">Si la lettre contient la zone <code>[à compléter : date et heure]</code>, la date du
+            rendez-vous y sera reportée automatiquement.</p>
+          {% endif %}
+
+          <button type="submit" class="pleine" {% if not cal_ok %}disabled{% endif %}>Créer le rendez-vous dans l'agenda</button>
+        </form>
+      </div>
+    </section>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+
+<script>
+// Rappel du jour de la semaine : évite un rendez-vous fixé un vendredi après-midi ou un week-end par erreur.
+(function () {
+  var jours = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  var champ = document.getElementById('r_date'), aide = document.getElementById('r_jour');
+  function maj() {
+    if (!champ.value) { aide.textContent = ''; return; }
+    var p = champ.value.split('-'), d = new Date(+p[0], +p[1] - 1, +p[2]);
+    var j = d.getDay();
+    aide.textContent = 'Le ' + jours[j] + ' ' + (+p[2]) + '/' + (+p[1]) + '/' + p[0]
+      + (j === 0 || j === 6 ? ' — attention, c\'est un week-end.' : '');
+    aide.style.color = (j === 0 || j === 6) ? 'var(--rouge)' : '';
+  }
+  champ.addEventListener('change', maj); maj();
+})();
+</script>
+</body>
+</html>

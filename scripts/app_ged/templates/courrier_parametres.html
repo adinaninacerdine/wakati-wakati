@@ -109,9 +109,39 @@
               <input type="text" name="sig_{{ loop.index0 }}_nom" value="{{ s.nom }}"></div>
             <div class="champ"><label>Adresse</label>
               <input type="email" name="sig_{{ loop.index0 }}_email" value="{{ s.email }}"></div>
+            <div class="champ"><label>Agenda Zoho</label>
+              {% if agendas %}
+              <select name="sig_{{ loop.index0 }}_agenda">
+                <option value="">— invitation par e-mail —</option>
+                {% for a in agendas %}
+                <option value="{{ a.uid }}" {% if s.agenda == a.uid %}selected{% endif %}>{{ a.nom }}{% if a.categorie %} ({{ a.categorie }}){% endif %}</option>
+                {% endfor %}
+              </select>
+              {% else %}
+              <input type="text" value="{{ s.agenda_nom or ('invitation par e-mail' if s.code else '') }}" disabled>
+              <input type="hidden" name="sig_{{ loop.index0 }}_agenda" value="{{ s.agenda or '' }}">
+              {% endif %}
+            </div>
           </div>
           {% endfor %}
+          {% for a in agendas %}<input type="hidden" name="agenda_nom_{{ a.uid }}" value="{{ a.nom }}">{% endfor %}
           <p class="aide">Vider le code d'une ligne la supprime.</p>
+
+          <h3 style="margin:18px 0 6px;font-size:14px;">Agendas Zoho Calendar</h3>
+          {% if agenda_erreur %}
+          <p class="aide" style="color:var(--rouge);">{{ agenda_erreur }}</p>
+          {% else %}
+          <p class="aide" style="margin-top:0;">Un directeur qui a partagé son agenda Zoho avec le compte
+            de la GED (droit « modifier les événements ») apparaît dans la liste : ses rendez-vous y
+            sont créés directement. Sans agenda choisi, il est invité par e-mail depuis l'agenda de la GED.</p>
+          <div class="champ" style="max-width:420px;"><label for="agenda_ged">Agenda de la GED (invitations)</label>
+            <select id="agenda_ged" name="agenda_ged">
+              <option value="">— aucun —</option>
+              {% for a in agendas %}
+              <option value="{{ a.uid }}" {% if p.agenda_ged == a.uid %}selected{% endif %}>{{ a.nom }}</option>
+              {% endfor %}
+            </select></div>
+          {% endif %}
         </div>
       </section>
 
