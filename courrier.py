@@ -3139,7 +3139,8 @@ def rdv():
         "email_correspondant": fiche.get("email", ""),
         "directeur": "DG",
     }
-    return render_template("courrier_rdv.html", page="courrier", rep=rep, entrant=e,
+    return render_template("courrier_rdv.html", page=("courrier" if (rep or e) else "rdv"),
+                           rep=rep, entrant=e,
                            organisation=organisation, objet=objet, v=valeurs,
                            signataires=sigs, durees=DUREES_RDV, cal_ok=ok_cal,
                            cal_raison=raison_cal, entrant_id=entrant_id,

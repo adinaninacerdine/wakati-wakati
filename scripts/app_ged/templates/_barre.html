@@ -30,6 +30,11 @@
     <a class="item {% if page == 'nouveau' %}actif{% endif %}" href="{{ url_for('courrier.preparer') }}">
       <span class="ico">＋</span> Nouveau courrier
     </a>
+    {% if courrier_responsable %}
+    <a class="item {% if page == 'rdv' %}actif{% endif %}" href="{{ url_for('courrier.rdv') }}">
+      <span class="ico">◷</span> Programmer un RDV
+    </a>
+    {% endif %}
     <a class="item {% if page == 'courrier' %}actif{% endif %}" href="{{ url_for('courrier.liste') }}">
       <span class="ico">✉</span> Courrier de réponse
       {% if cpt_courrier and cpt_courrier.en_retard %}<span class="pastille">{{ cpt_courrier.en_retard }}</span>{% endif %}
