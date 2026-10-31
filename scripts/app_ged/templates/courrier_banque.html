@@ -52,19 +52,41 @@
                 </select></div>
             </div>
             <div class="rang">
-              <div class="champ"><label>Nom du destinataire</label>
-                <input type="text" name="nom" value="{{ f.nom or '' }}" placeholder="Prénom Nom"></div>
-              <div class="champ"><label>Fonction</label>
-                <input type="text" name="fonction" value="{{ f.fonction or '' }}" placeholder="Gouverneur, Directeur…"></div>
+              <div class="champ" style="flex:0 0 170px;"><label for="c_titre">Civilité</label>
+                <select id="c_titre" name="titre" data-civ>
+                  <option value="">— à choisir —</option>
+                  {% for t in titres_civilite %}<option value="{{ t }}" {% if f.titre == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+                </select></div>
+              <div class="champ"><label for="c_nom">Nom du destinataire</label>
+                <input type="text" id="c_nom" name="nom" value="{{ f.nom or '' }}" placeholder="Prénom NOM (facultatif)" data-civ></div>
+              <div class="champ"><label for="c_fonction">Fonction</label>
+                <input type="text" id="c_fonction" name="fonction" value="{{ f.fonction or '' }}"
+                       list="liste_fonctions" placeholder="Directeur Général, Gouverneur…" autocomplete="off" data-civ>
+                <datalist id="liste_fonctions">
+                  {% for x in fonctions_courantes %}<option value="{{ x }}">{% endfor %}
+                </datalist>
+                <div class="aide">Au masculin : la GED accorde au féminin quand la civilité est « Madame ».</div></div>
             </div>
-            <div class="rang">
-              <div class="champ"><label>Civilité exacte (bloc destinataire)</label>
-                <input type="text" name="civilite" value="{{ f.civilite or '' }}"
-                       placeholder="Monsieur le Gouverneur de la Banque Centrale des Comores"></div>
-              <div class="champ"><label>Formule d'appel</label>
-                <input type="text" name="formule_appel" value="{{ f.formule_appel or '' }}"
-                       placeholder="Monsieur le Gouverneur"></div>
+
+            <div class="apercu-civilite" id="apercu_civ" aria-live="polite">
+              <div class="aide" style="margin:0 0 6px;">Ce que la GED imprimera</div>
+              <div><span class="etiquette">Formule d'appel</span> <strong id="ap_appel">—</strong></div>
+              <div style="margin-top:6px;"><span class="etiquette">À l'attention de</span>
+                <span id="ap_bloc">—</span></div>
             </div>
+
+            <details {% if f.civilite or f.formule_appel %}open{% endif %} style="margin:10px 0 14px;">
+              <summary>Personnaliser (cas particuliers : Son Excellence, double titre…)</summary>
+              <div class="rang" style="margin-top:10px;">
+                <div class="champ"><label>Ligne « À l'attention de » personnalisée</label>
+                  <input type="text" name="civilite" value="{{ f.civilite or '' }}"
+                         placeholder="Son Excellence Monsieur l'Ambassadeur de France"></div>
+                <div class="champ"><label>Formule d'appel personnalisée</label>
+                  <input type="text" name="formule_appel" value="{{ f.formule_appel or '' }}"
+                         placeholder="Excellence"></div>
+              </div>
+              <div class="aide">Laissez vide pour garder la composition automatique ci-dessus.</div>
+            </details>
             <div class="rang">
               <div class="champ"><label>Adresse (une ligne par ligne)</label>
                 <textarea name="adresse" style="min-height:70px;">{{ f.adresse or '' }}</textarea></div>
@@ -120,7 +142,7 @@
                 {% if f.confidentiel %}<span class="badge">confidentiel</span>{% endif %}
               </td>
               <td>{{ cat.nom if cat else f.categorie }}</td>
-              <td>{{ f.formule_appel or 'Madame, Monsieur (défaut)' }}</td>
+              <td>{% set ap = f|appel_fiche %}{% if ap %}{{ ap }}{% else %}<span class="badge alerte">civilité à choisir</span>{% endif %}</td>
               <td>{{ f.signataire or (cat.signataire if cat else '') }}</td>
               <td><a href="{{ url_for('courrier.banque', onglet='annuaire', correspondant=f.id) }}">Modifier</a></td>
             </tr>
@@ -298,6 +320,41 @@ function inserer(nom) {
   z.focus();
   z.selectionStart = z.selectionEnd = pos + v.length;
 }
+
+// Aperçu en direct de la civilité composée (formule d'appel + bloc destinataire)
+(function () {
+  var zone = document.getElementById('apercu_civ');
+  if (!zone) { return; }
+  var form = zone.closest('form');
+  var URL_CIV = "{{ url_for('courrier.api_civilite') }}";
+  var champ = function (n) { var e = form.querySelector('[name="' + n + '"]'); return e ? e.value.trim() : ''; };
+  var minuteur = null;
+  function maj() {
+    var q = new URLSearchParams({titre: champ('titre'), nom: champ('nom'),
+                                 fonction: champ('fonction'), organisation: champ('organisation')});
+    fetch(URL_CIV + '?' + q.toString(), {credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var appel = champ('formule_appel') || d.appel;
+        var bloc = d.bloc || [];
+        if (champ('civilite')) { bloc = [champ('civilite')].concat(champ('organisation') ? [champ('organisation')] : []); }
+        document.getElementById('ap_appel').textContent = appel ? appel + ',' : '— choisissez une civilité —';
+        var cible = document.getElementById('ap_bloc');
+        cible.innerHTML = '';
+        bloc.forEach(function (ligne, i) {
+          var s = document.createElement(i === 0 ? 'strong' : 'span');
+          s.textContent = ligne;
+          cible.appendChild(document.createElement('br'));
+          cible.appendChild(s);
+        });
+        if (!bloc.length) { cible.textContent = '—'; }
+      })
+      .catch(function () {});
+  }
+  form.addEventListener('input', function () { clearTimeout(minuteur); minuteur = setTimeout(maj, 250); });
+  form.addEventListener('change', maj);
+  maj();
+})();
 </script>
 </body>
 </html>

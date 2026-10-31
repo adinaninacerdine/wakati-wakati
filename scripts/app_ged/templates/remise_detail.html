@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bordereau {{ r.id }} — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Bordereau de remise</h1>
+    <div class="contexte">
+      <span class="badge {% if r.statut == 'remis' %}ok{% elif r.statut == 'annule' or r.expire %}alerte{% endif %}">{{ 'Lien expiré' if r.expire else r.statut_lib }}</span>
+      &nbsp;<a class="lien-action" href="{{ url_for('remises.liste') }}">Toutes les remises</a>
+    </div>
+  </header>
+
+  <div class="contenu large">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="grille-edition">
+      <div>
+        <section class="bloc bordereau-imprimable">
+          <h2><span>{{ r.objet }}</span><span class="aide" style="margin:0;">{{ r.id }}</span></h2>
+          <div class="corps">
+            <div class="entete-bordereau">
+              <div>
+                {% if r.reference %}<div><span class="etiquette">Référence</span> {{ r.reference }}</div>{% endif %}
+                <div style="margin-top:8px;"><span class="etiquette">Destinataire</span></div>
+                <div class="bloc-dest">
+                  {% for l in r.destinataire %}{% if loop.first %}<strong>{{ l }}</strong>{% else %}{{ l }}{% endif %}<br>{% endfor %}
+                  {% for l in r.adresse %}{{ l }}<br>{% endfor %}
+                </div>
+                {% if r.note %}<div style="margin-top:8px;"><span class="etiquette">Consigne</span> {{ r.note }}</div>{% endif %}
+                <div class="aide" style="margin-top:8px;">Créé le {{ r.cree_affiche }} par {{ r.cree_par }}{% if r.coursier %} · coursier : {{ r.coursier }}{% endif %}</div>
+                {% if r.reponse_ref %}<div style="margin-top:6px;"><a class="lien-action ecran-seul" href="{{ url_for('courrier.edition', ref=r.reponse_ref) }}">Ouvrir le projet de courrier</a></div>{% endif %}
+              </div>
+              {% if qr %}
+              <figure class="qr-remise">
+                {{ qr|safe }}
+                <figcaption>À scanner par le coursier<br>au moment de la remise</figcaption>
+              </figure>
+              {% endif %}
+            </div>
+
+            {% if r.statut == 'en_cours' %}
+            <div class="ecran-seul" style="margin-top:16px;">
+              <label for="lien_coursier">Lien du coursier</label>
+              <div class="rang" style="gap:8px;align-items:center;">
+                <input type="text" id="lien_coursier" value="{{ lien }}" readonly style="flex:3;">
+                <div style="flex:0;min-width:auto;display:flex;gap:8px;">
+                  <button type="button" class="mineur" onclick="copierLien()">Copier</button>
+                  <button type="button" class="mineur" onclick="partagerLien()">Envoyer</button>
+                  <button type="button" class="mineur" onclick="window.print()">Imprimer</button>
+                </div>
+              </div>
+              <p class="aide">Ce lien ouvre la page de remise sans compte : ne le transmettez qu'au coursier.
+                Il expire le {{ r.expire_le|date_courte }} et se ferme dès la remise signée.</p>
+            </div>
+            {% endif %}
+          </div>
+        </section>
+
+        {% if r.statut == 'remis' %}
+        <section class="bloc">
+          <h2><span>Preuve de remise</span><span class="badge ok">Remis</span></h2>
+          <div class="corps">
+            <div><span class="etiquette">Remis à</span> <strong>{{ r.remise.nom }}</strong>{% if r.remise.fonction %} — {{ r.remise.fonction }}{% endif %}</div>
+            <div style="margin-top:6px;"><span class="etiquette">Le</span> {{ r.remis_affiche }}</div>
+            <div style="margin-top:6px;"><span class="etiquette">Position</span>
+              {% if r.gps_lien %}<a href="{{ r.gps_lien }}" target="_blank" rel="noopener">{{ r.gps_texte }}</a>{% else %}{{ r.gps_texte }}{% endif %}</div>
+            {% if r.remise.coursier %}<div style="margin-top:6px;"><span class="etiquette">Coursier</span> {{ r.remise.coursier }}</div>{% endif %}
+            <div class="preuves">
+              <figure><img src="{{ url_for('remises.piece', rid=r.id, nom='signature.png') }}" alt="Signature de {{ r.remise.nom }}"><figcaption>Signature</figcaption></figure>
+              {% for ph in r.remise.photos %}
+              <figure><a href="{{ url_for('remises.piece', rid=r.id, nom=ph) }}" target="_blank" rel="noopener">
+                <img src="{{ url_for('remises.piece', rid=r.id, nom=ph) }}" alt="Photo du cachet"></a><figcaption>Cachet / décharge</figcaption></figure>
+              {% endfor %}
+            </div>
+            <div class="actions">
+              {% if r.accuse %}<a class="bouton" href="{{ url_for('remises.piece', rid=r.id, nom='accuse.pdf') }}" target="_blank" rel="noopener">Accusé de remise (PDF)</a>{% endif %}
+              {% if r.lien_accuse %}<a class="lien-action" href="{{ r.lien_accuse }}" target="_blank" rel="noopener">Archivé dans WorkDrive</a>
+              {% else %}
+              <form method="POST" action="{{ url_for('remises.rearchiver', rid=r.id) }}" style="display:inline;">
+                <button type="submit" class="mineur">Archiver l'accusé dans WorkDrive</button></form>
+              {% endif %}
+            </div>
+          </div>
+        </section>
+        {% endif %}
+      </div>
+
+      <div>
+        <section class="bloc">
+          <h2>Tentatives sans remise</h2>
+          <div class="corps">
+            {% if r.tentatives_aff %}
+            <ul class="historique">
+              {% for tv in r.tentatives_aff|reverse %}
+              <li><strong>{{ tv.motif_lib }}</strong> — {{ tv.le_aff }}{% if tv.coursier %} — {{ tv.coursier }}{% endif %}
+                {% if tv.commentaire %}<br>{{ tv.commentaire }}{% endif %}
+                <br>{% if tv.gps_lien %}<a href="{{ tv.gps_lien }}" target="_blank" rel="noopener">{{ tv.gps_texte }}</a>{% else %}{{ tv.gps_texte }}{% endif %}
+                {% if tv.photo %} · <a href="{{ url_for('remises.piece', rid=r.id, nom=tv.photo) }}" target="_blank" rel="noopener">photo</a>{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="vide">Aucune.</p>
+            {% endif %}
+          </div>
+        </section>
+
+        {% if r.statut == 'en_cours' %}
+        <section class="bloc ecran-seul">
+          <h2>Gérer le bordereau</h2>
+          <div class="corps">
+            {% if r.expire %}
+            <form method="POST" action="{{ url_for('remises.prolonger', rid=r.id) }}">
+              <button type="submit" class="mineur">Prolonger le lien de 30 jours</button></form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('remises.annuler', rid=r.id) }}" style="margin-top:10px;"
+                  onsubmit="return confirm('Annuler ce bordereau ? Le lien du coursier ne s\'ouvrira plus.');">
+              <button type="submit" class="discret">Annuler le bordereau</button></form>
+          </div>
+        </section>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+
+<script>
+function copierLien() {
+  var c = document.getElementById('lien_coursier');
+  c.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(c.value) : Promise.reject())
+    .catch(function () { document.execCommand('copy'); });
+}
+function partagerLien() {
+  var lien = document.getElementById('lien_coursier').value;
+  if (navigator.share) {
+    navigator.share({title: 'Remise de courrier', text: 'Bordereau de remise WAKATI', url: lien}).catch(function () {});
+  } else {
+    window.location.href = 'mailto:?subject=' + encodeURIComponent('Bordereau de remise') +
+                           '&body=' + encodeURIComponent(lien);
+  }
+}
+</script>
+</body>
+</html>

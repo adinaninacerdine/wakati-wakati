@@ -87,6 +87,7 @@ F_ENTRANTS = DONNEES / "entrants.json"
 F_PARAMETRES = DONNEES / "parametres.json"
 F_SECRET_IA = DONNEES / "secret_ia.json"
 F_RAPPELS = DONNEES / "rappels_agenda.json"
+F_REMISES = DONNEES / "remises.json"      # bordereaux de remise (module remise.py)
 
 FICHIER_VISAS = RACINE / "visas.json"
 
@@ -561,11 +562,105 @@ def _migrer_banque():
 
 def _fiche_vide():
     return {
-        "id": "", "organisation": "", "nom": "", "fonction": "",
+        "id": "", "organisation": "", "nom": "", "fonction": "", "titre": "",
         "civilite": "", "formule_appel": "", "adresse": "", "email": "",
         "categorie": "", "signataire": "", "copies": "", "alias": "",
         "confidentiel": False, "a_verifier": False, "notes": "",
     }
+
+
+# ---------------------------------------------------------------------------
+# Civilité : formule d'appel et bloc « À l'attention de » composés
+# ---------------------------------------------------------------------------
+# La fiche porte une civilité (liste) et une fonction ; la GED en déduit
+# « Monsieur le Directeur Général » ou « Madame la Directrice Générale ».
+# Les champs libres « civilite » (ligne À l'attention de) et
+# « formule_appel » restent prioritaires quand ils sont remplis.
+TITRES_CIVILITE = ["Monsieur", "Madame", "Docteur", "Maître", "Professeur"]
+_TITRES_GENRES = ("Monsieur", "Madame")
+
+FONCTIONS_COURANTES = [
+    "Directeur Général", "Directeur Général Adjoint", "Directeur",
+    "Directeur Administratif et Financier", "Ministre", "Gouverneur",
+    "Vice-Gouverneur", "Président", "Président du Conseil d'Administration",
+    "Secrétaire Général", "Coordonnateur National", "Maire", "Ambassadeur",
+    "Préfet", "Commissaire", "Chef de service", "Gérant",
+]
+
+# Mot masculin -> mot féminin, pour « Madame la Directrice Générale ».
+_FEMININ = {
+    "directeur": "directrice", "général": "générale", "président": "présidente",
+    "coordonnateur": "coordonnatrice", "coordinateur": "coordinatrice",
+    "administrateur": "administratrice", "inspecteur": "inspectrice",
+    "ambassadeur": "ambassadrice", "conseiller": "conseillère",
+    "chargé": "chargée", "délégué": "déléguée", "gouverneur": "gouverneure",
+    "vice-gouverneur": "vice-gouverneure", "préfet": "préfète",
+    "financier": "financière", "adjoint": "adjointe", "national": "nationale",
+    "régional": "régionale", "principal": "principale", "chef": "cheffe",
+    "gérant": "gérante", "secrétaire": "secrétaire", "ministre": "ministre",
+    "commissaire": "commissaire", "maire": "maire", "responsable": "responsable",
+}
+
+
+def _feminiser(fonction):
+    """« Directeur Général Adjoint » -> « Directrice Générale Adjointe ».
+    Seuls les mots connus changent ; la casse saisie est conservée."""
+    def mot(m):
+        brut = m.group(0)
+        fem = _FEMININ.get(brut.lower())
+        if not fem:
+            return brut
+        if brut.isupper():
+            return fem.upper()
+        if brut[0].isupper():
+            return "-".join(p[:1].upper() + p[1:] for p in fem.split("-"))
+        return fem
+    return re.sub(r"[\wÀ-ÿ'-]+", mot, fonction or "")
+
+
+def _avec_article(titre, fonction):
+    """« Monsieur » + « Directeur » -> « Monsieur le Directeur » ;
+    « Madame » + « Ambassadrice » -> « Madame l'Ambassadrice »."""
+    premier = (fonction[:1] or "").lower()
+    if premier in "aeiouyàâéèêëîïôöûüh" and not fonction.lower().startswith("haut"):
+        return f"{titre} l'{fonction}"
+    return f"{titre} {'la' if titre == 'Madame' else 'le'} {fonction}"
+
+
+def composer_civilite(fiche):
+    """Formule d'appel et bloc destinataire déduits de la civilité, du nom et
+    de la fonction. Retourne {"appel", "attention", "lignes"} : « attention »
+    est la ligne en gras sous « À l'attention de », « lignes » ce qui la suit
+    avant l'organisation."""
+    fiche = fiche or {}
+    titre = (fiche.get("titre") or "").strip()
+    nom = (fiche.get("nom") or "").strip()
+    fonction = _sans_article(fiche.get("fonction"))
+    if titre == "Madame":
+        fonction = _feminiser(fonction)
+
+    if titre in _TITRES_GENRES:
+        appel = _avec_article(titre, fonction) if fonction else titre
+    else:
+        appel = titre  # Docteur, Maître, Professeur : la formule reste courte
+
+    if nom:
+        attention, lignes = f"{titre} {nom}".strip(), ([fonction] if fonction else [])
+    elif fonction and titre in _TITRES_GENRES:
+        attention, lignes = appel, []
+    elif fonction:
+        attention, lignes = (titre, [fonction]) if titre else (fonction, [])
+    else:
+        # Ni nom ni fonction : l'organisation ouvre le bloc destinataire.
+        attention, lignes = "", []
+    return {"appel": appel, "attention": attention, "lignes": lignes}
+
+
+def formule_appel_fiche(fiche):
+    """Formule d'appel d'une fiche : la saisie libre, sinon la composée."""
+    fiche = fiche or {}
+    return ((fiche.get("formule_appel") or "").strip()
+            or composer_civilite(fiche)["appel"]).rstrip(",").strip()
 
 
 def categories():
@@ -1126,9 +1221,9 @@ def variables_reponse(rep):
     # Formule d'appel : celle choisie dans le projet, sinon celle de la fiche
     # du correspondant. Jamais de « Madame, Monsieur » par défaut (demande du
     # DG) : une zone à compléter oblige à choisir la bonne civilité.
-    appel = (rep.get("formule_appel") or fiche.get("formule_appel") or "").strip().rstrip(",")
+    appel = (rep.get("formule_appel") or formule_appel_fiche(fiche) or "").strip().rstrip(",")
     return {
-        "civilite": fiche.get("civilite", ""),
+        "civilite": fiche.get("civilite") or composer_civilite(fiche)["attention"],
         "formule_appel": appel,
         "organisation": fiche.get("organisation") or rep.get("correspondant_libre", ""),
         "ref_entrant": rep.get("ref_entrant", ""),
@@ -1262,7 +1357,7 @@ def creer_reponse(champs, entrant_id=""):
         "signataire": (champs.get("signataire") or fiche.get("signataire")
                        or cat.get("signataire") or "DG"),
         "copies": champs.get("copies", fiche.get("copies", "")).strip(),
-        "formule_appel": (champs.get("formule_appel") or fiche.get("formule_appel") or "").strip(),
+        "formule_appel": (champs.get("formule_appel") or formule_appel_fiche(fiche) or "").strip(),
         "corps": "",
         "statut": "brouillon",
         "visa_ref": "",
@@ -1610,10 +1705,13 @@ def _pdf_lettre(rep, filigrane):
     pdf.ln(7.05)
 
     # Destinataire
-    nom = fiche.get("civilite") or fiche.get("nom") or ""
-    lignes = []
-    if fiche.get("fonction") and not fiche.get("civilite"):
-        lignes.append(fiche["fonction"])
+    # Ligne libre « civilité » si elle est remplie, sinon bloc composé à
+    # partir de la civilité, du nom et de la fonction.
+    if fiche.get("civilite"):
+        nom, lignes = fiche["civilite"], []
+    else:
+        compo = composer_civilite(fiche)
+        nom, lignes = compo["attention"], list(compo["lignes"])
     org = fiche.get("organisation") or rep.get("correspondant_libre", "")
     if org and org != nom:
         lignes.append(org)
@@ -2256,7 +2354,10 @@ def compteurs():
             except ValueError:
                 pass
         reps = reponses().values()
+        remises = _lire(F_REMISES, {})
         return {
+            "remises_en_cours": sum(1 for r in remises.values()
+                                    if r.get("statut") == "en_cours"),
             "a_repondre": len(ouverts),
             "en_retard": retard,
             "brouillons": sum(1 for r in reps if r.get("statut") in ("brouillon", "retourne")),
@@ -2265,7 +2366,7 @@ def compteurs():
         }
     except Exception:  # noqa: BLE001
         return {"a_repondre": 0, "en_retard": 0, "brouillons": 0,
-                "a_valider": 0, "en_signature": 0}
+                "a_valider": 0, "en_signature": 0, "remises_en_cours": 0}
 
 
 def _duree(heures):
@@ -2334,6 +2435,8 @@ def vie_courriers(n=10):
                 ("Soumise au DG", histo.get("Resoumis à validation") or histo.get("Soumis à validation")),
                 ("Bon pour signature", histo.get("En signature")),
                 ("Répondu", e.get("repondu_le") or histo.get("Archivé")),
+                # Preuve de remise signée par le destinataire (remise.py)
+                ("Remis", rep.get("remis_le")),
             ]
         else:
             etapes.append(("Classé", e.get("recu_le") if e.get("nom_archive") else ""))
@@ -2534,7 +2637,17 @@ def edition(ref):
         pc_vide=PC_VIDE,
         formules_appel=FORMULES_APPEL,
         appel_affiche=variables_reponse(rep).get("formule_appel", ""),
+        remises_projet=_remises_projet(ref),
         **_contexte_commun())
+
+
+def _remises_projet(ref):
+    """Bordereaux de remise du projet (module remise.py, facultatif)."""
+    try:
+        import remise  # noqa: PLC0415 — import tardif : remise importe courrier
+        return [remise._affichee(r) for r in remise.remises_du_projet(ref)]
+    except Exception:  # noqa: BLE001
+        return None
 
 
 _CHAMPS_EDITABLES = ("objet", "ref_entrant", "date_entrant", "date_reception",
@@ -2796,6 +2909,8 @@ def banque():
                            edite_m=edite_m, nouveau_m=nouveau_m,
                            nouveau_c=request.args.get("correspondant") == "nouveau",
                            variables=LIBELLES_VARIABLES,
+                           titres_civilite=TITRES_CIVILITE,
+                           fonctions_courantes=FONCTIONS_COURANTES,
                            **_contexte_commun())
 
 
@@ -2815,10 +2930,19 @@ def sauver_correspondant():
                 cid, n = f"{base}-{n}", n + 1
             fiche["id"] = cid
             liste.append(fiche)
-        for champ in ("organisation", "nom", "fonction", "civilite", "formule_appel",
-                      "adresse", "email", "categorie", "signataire", "copies",
-                      "alias", "notes"):
+        for champ in ("organisation", "nom", "fonction", "titre", "civilite",
+                      "formule_appel", "adresse", "email", "categorie",
+                      "signataire", "copies", "alias", "notes"):
             fiche[champ] = f.get(champ, "").replace("\r\n", "\n").strip()
+        if fiche["titre"] not in TITRES_CIVILITE:
+            fiche["titre"] = ""
+        # Une saisie libre identique à la composition automatique n'a pas
+        # lieu d'être figée : la fiche suivra les changements de fonction.
+        compo = composer_civilite(fiche)
+        if fiche["formule_appel"].rstrip(",") == compo["appel"]:
+            fiche["formule_appel"] = ""
+        if fiche["civilite"] == compo["attention"]:
+            fiche["civilite"] = ""
         fiche["confidentiel"] = f.get("confidentiel") == "on"
         fiche["a_verifier"] = f.get("a_verifier") == "on"
         if not fiche["organisation"] and not fiche["nom"]:
@@ -3520,13 +3644,25 @@ def tester_ia():
 # ---------------------------------------------------------------------------
 # API JSON — formulaire de préparation
 # ---------------------------------------------------------------------------
+@bp_courrier.route("/api/civilite")
+def api_civilite():
+    """Aperçu en direct, dans la fiche de l'annuaire, de la formule d'appel
+    et du bloc destinataire composés."""
+    a = request.args
+    fiche = {k: a.get(k, "") for k in ("titre", "nom", "fonction", "organisation")}
+    compo = composer_civilite(fiche)
+    bloc = [x for x in [compo["attention"], *compo["lignes"], fiche["organisation"]] if x]
+    return jsonify({"appel": compo["appel"], "bloc": bloc})
+
+
 @bp_courrier.route("/api/fiche/<cid>")
 def api_fiche(cid):
     fiche = correspondant(cid)
     if not fiche:
         return jsonify({}), 404
     cat = categorie(fiche.get("categorie", "")) or {}
-    return jsonify({**fiche, "categorie_nom": cat.get("nom", ""),
+    return jsonify({**fiche, "formule_appel": formule_appel_fiche(fiche),
+                    "categorie_nom": cat.get("nom", ""),
                     "signataire_defaut": fiche.get("signataire") or cat.get("signataire", "DG"),
                     "registre": cat.get("registre", "")})
 
@@ -3556,6 +3692,7 @@ def init_courrier(app, protection=None, services=None, types=None,
 
     app.jinja_env.filters.setdefault("date_longue", date_longue)
     app.jinja_env.filters.setdefault("date_courte", date_courte)
+    app.jinja_env.filters.setdefault("appel_fiche", formule_appel_fiche)
 
     assurer_banque()
     nb_valides = sum(1 for m in modeles() if m.get("statut") == "valide")

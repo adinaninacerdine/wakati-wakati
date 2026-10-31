@@ -102,6 +102,19 @@ except Exception as _courrier_err:  # noqa: BLE001
 
 
 # ==========================================
+# REMISE PAR COURSIER (accusé de remise signé)
+# ==========================================
+# Bordereau + page mobile du coursier (/r/<jeton>, sans compte) : le
+# destinataire signe, la GED produit et archive l'accusé de remise.
+try:
+    import remise
+    REMISE_DISPONIBLE = COURRIER_DISPONIBLE
+except Exception as _remise_err:  # noqa: BLE001
+    print(f"[GED] remise.py indisponible ({_remise_err}) — remises coursier desactivees.")
+    REMISE_DISPONIBLE = False
+
+
+# ==========================================
 # MOTEUR DE RECHERCHE
 # ==========================================
 # Index plein texte des documents archives (noms, objets, correspondants,
@@ -125,6 +138,9 @@ if COURRIER_DISPONIBLE:
     app.register_blueprint(courrier.bp_courrier)
 if RECHERCHE_DISPONIBLE:
     app.register_blueprint(recherche.bp_recherche)
+if REMISE_DISPONIBLE:
+    app.register_blueprint(remise.bp_remises)
+    app.register_blueprint(remise.bp_remise_public)
 
 
 # ==========================================
@@ -206,6 +222,12 @@ COLONNES_NOTIF = ['Statut Cliq', 'Statut Sign', 'Sign Request ID']
 # du registre Zoho Sheet (et en fin de ligne 1 de registre_2026.csv).
 COLONNES_REPONSE = ['En réponse à', 'Statut de la réponse', 'Échéance']
 COLONNES_REPONSE_ACTIVES = False
+
+# Remise par coursier : colonne « Remise » (« Remis le 03/11 à M. X »).
+# Passe a True apres avoir ajoute l'en-tete « Remise » dans la feuille DATA
+# et en fin de ligne 1 de registre_2026.csv. L'accuse de remise est archive
+# dans WorkDrive dans tous les cas.
+COLONNE_REMISE_ACTIVE = False
 
 
 # ==========================================
@@ -486,6 +508,32 @@ if COURRIER_DISPONIBLE:
         COURRIER_DISPONIBLE = False
 
 
+def archiver_annexe(chemin, service, type_doc, nom_parent="", valeurs_registre=None):
+    """Dépose une pièce annexe (accusé de remise) dans le dossier WorkDrive
+    du courrier auquel elle se rapporte, et complète la ligne du registre
+    quand la colonne existe. Retourne le lien WorkDrive."""
+    z._refresh_access_token()
+    try:
+        dossier_id = get_zoho_folder_id(service, type_doc)
+    except Exception:  # noqa: BLE001
+        dossier_id = DOSSIERS_ZOHO_DEFAUT["sortant"]
+    resp = upload_avec_diagnostic(chemin, dossier_id)
+    lien, _ = extraire_lien_fichier(resp)
+    if COLONNE_REMISE_ACTIVE and nom_parent and valeurs_registre:
+        maj_registre_local(nom_parent, valeurs_registre)
+        maj_registre_sheet(nom_parent, valeurs_registre)
+    return lien
+
+
+if REMISE_DISPONIBLE:
+    try:
+        remise.init_remise(app, connexion_requise if AUTH_ACTIVE else None,
+                           archiver_annexe=archiver_annexe)
+    except Exception:  # noqa: BLE001
+        logging.error("Initialisation des remises : %s", traceback.format_exc())
+        REMISE_DISPONIBLE = False
+
+
 if RECHERCHE_DISPONIBLE:
     try:
         recherche.init_recherche(app, connexion_requise if AUTH_ACTIVE else None,
@@ -499,6 +547,7 @@ if RECHERCHE_DISPONIBLE:
 def _contexte_barre():
     """Compteurs de la barre laterale, sur toutes les pages."""
     ctx = {"courrier_actif": COURRIER_DISPONIBLE, "recherche_active": RECHERCHE_DISPONIBLE,
+           "remise_active": REMISE_DISPONIBLE,
            "nb_a_viser": 0,
            "cpt_courrier": None, "courrier_responsable": False}
     try:

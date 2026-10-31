@@ -553,3 +553,38 @@ td.actions-cellule form { display: inline; }
   .choix-agenda select { min-width: 0; width: 100%; }
   .choix-agenda { display: block; margin: 0 0 8px; }
 }
+
+/* ============================================================
+   CIVILITÉ (fiche de l'annuaire)
+   ============================================================ */
+.apercu-civilite { margin: 2px 0 6px; padding: 12px 14px; border: 1px dashed var(--navy-bord);
+  border-radius: 6px; background: var(--navy-fond); font-size: 14px; line-height: 1.45; }
+.etiquette { display: inline-block; min-width: 118px; font-size: 12px; font-weight: 700;
+  color: var(--texte-doux); text-transform: uppercase; letter-spacing: .4px; }
+
+/* ============================================================
+   REMISES PAR COURSIER
+   ============================================================ */
+.entete-bordereau { display: flex; gap: 24px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+.entete-bordereau > div { flex: 1 1 260px; }
+.bloc-dest { margin-top: 4px; line-height: 1.45; }
+.qr-remise { margin: 0; text-align: center; flex: 0 0 auto; }
+.qr-remise svg { width: 200px; height: 200px; display: block; margin: 0 auto;
+  border: 1px solid var(--bord); border-radius: 6px; background: #FFFFFF; }
+.qr-remise figcaption { font-size: 12px; color: var(--texte-doux); margin-top: 6px; }
+.preuves { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
+.preuves figure { margin: 0; }
+.preuves img { display: block; max-width: 260px; max-height: 180px; border: 1px solid var(--bord);
+  border-radius: 6px; background: #FFFFFF; object-fit: contain; }
+.preuves figcaption { font-size: 12px; color: var(--texte-doux); margin-top: 4px; }
+.ligne-remise { padding: 10px 0; border-bottom: 1px solid var(--bord); font-size: 13.5px; }
+.ligne-remise:first-child { padding-top: 0; }
+
+@media print {
+  .barre, .entete, .flash, .ecran-seul, .pied, .grille-edition > div:last-child { display: none !important; }
+  .principal, .contenu { padding: 0 !important; max-width: none !important; }
+  .grille-edition { display: block; }
+  .bloc { border: 0; }
+  .bordereau-imprimable ~ .bloc { display: none !important; }
+  .qr-remise svg { width: 60mm; height: 60mm; }
+}

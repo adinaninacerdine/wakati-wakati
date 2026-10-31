@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remises par coursier — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Remises par coursier</h1>
+    <div class="contexte">Bordereau, signature du destinataire, accusé de remise</div>
+  </header>
+
+  <div class="contenu large">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <section class="bloc">
+      <h2><span>À remettre</span>{% if en_cours %}<span class="compte">{{ en_cours|length }}</span>{% endif %}</h2>
+      <div class="corps">
+        {% if en_cours %}
+        <div class="table-defilante">
+        <table class="table-registre">
+          <thead><tr><th>Courrier</th><th>Destinataire</th><th>Créé</th><th>Coursier</th><th>Suivi</th><th></th></tr></thead>
+          <tbody>
+          {% for r in en_cours %}
+            <tr>
+              <td><strong>{{ r.objet }}</strong>{% if r.reference %}<div class="aide">{{ r.reference }}</div>{% endif %}</td>
+              <td>{{ r.organisation or (r.destinataire|first) }}</td>
+              <td>{{ r.cree_affiche }}</td>
+              <td>{{ r.coursier or '—' }}</td>
+              <td>
+                {% if r.expire %}<span class="badge alerte">lien expiré</span>
+                {% elif r.nb_echecs %}<span class="badge alerte">{{ r.nb_echecs }} échec{{ 's' if r.nb_echecs > 1 }}</span>
+                  <div class="aide">{{ (r.tentatives_aff|last).motif_lib }}</div>
+                {% else %}<span class="badge">en route</span>{% endif %}
+              </td>
+              <td><a class="lien-action" href="{{ url_for('remises.detail', rid=r.id) }}">Bordereau</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="vide">Aucun courrier en cours de remise.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="bloc">
+      <h2><span>Courriers signés sans bordereau</span>{% if a_remettre %}<span class="compte">{{ a_remettre|length }}</span>{% endif %}</h2>
+      <div class="corps">
+        {% if a_remettre %}
+        <div class="table-defilante">
+        <table class="table-registre">
+          <thead><tr><th>Courrier</th><th>Destinataire</th><th>Statut</th><th>Créer le bordereau</th></tr></thead>
+          <tbody>
+          {% for p in a_remettre %}
+            <tr>
+              <td><a href="{{ url_for('courrier.edition', ref=p.ref) }}">{{ p.objet }}</a>
+                {% if p.ref_imprimee %}<div class="aide">{{ p.ref_imprimee }}</div>{% endif %}</td>
+              <td>{{ p.organisation }}</td>
+              <td><span class="badge ok">{{ p.statut_lib }}</span></td>
+              <td>
+                <form method="POST" action="{{ url_for('remises.creer') }}" class="rang" style="gap:8px;align-items:center;">
+                  <input type="hidden" name="ref" value="{{ p.ref }}">
+                  <input type="text" name="coursier" placeholder="Coursier (facultatif)" style="max-width:190px;" aria-label="Coursier">
+                  <button type="submit" class="mineur">Créer</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="vide">Tous les courriers signés des 60 derniers jours ont leur bordereau.</p>
+        {% endif %}
+        <p class="aide">Les décisions du DG ne sont pas proposées : elles se notifient autrement. Elles restent possibles par un bordereau libre.</p>
+      </div>
+    </section>
+
+    <section class="bloc">
+      <h2>Bordereau libre</h2>
+      <div class="corps">
+        <details>
+          <summary>Pour un pli qui n'a pas été rédigé dans la GED (contrat, document archivé, colis)</summary>
+          <form method="POST" action="{{ url_for('remises.creer') }}" style="margin-top:14px;">
+            <div class="rang">
+              <div class="champ" style="flex:2;"><label for="l_objet">Objet</label>
+                <input type="text" id="l_objet" name="objet" required></div>
+              <div class="champ"><label for="l_ref">Référence</label>
+                <input type="text" id="l_ref" name="reference" placeholder="N°2026-…/DG/HM"></div>
+            </div>
+            <div class="rang">
+              <div class="champ"><label for="l_dest">Destinataire (une ligne par ligne)</label>
+                <textarea id="l_dest" name="destinataire" required style="min-height:80px;"
+                          placeholder="Monsieur le Directeur Général&#10;Comores Télécom"></textarea></div>
+              <div class="champ"><label for="l_adr">Adresse</label>
+                <textarea id="l_adr" name="adresse" style="min-height:80px;"></textarea></div>
+            </div>
+            <div class="rang">
+              <div class="champ"><label for="l_nom">Nom du fichier archivé (facultatif)</label>
+                <input type="text" id="l_nom" name="nom_archive" placeholder="HM26-…pdf"></div>
+              <div class="champ"><label for="l_cou">Coursier</label>
+                <input type="text" id="l_cou" name="coursier"></div>
+            </div>
+            <div class="champ"><label for="l_note">Consigne pour le coursier</label>
+              <input type="text" id="l_note" name="note" placeholder="Remettre au secrétariat du DG, 2e étage"></div>
+            <button type="submit">Créer le bordereau</button>
+          </form>
+        </details>
+      </div>
+    </section>
+
+    <section class="bloc">
+      <h2>Remis récemment</h2>
+      <div class="corps">
+        {% if remis %}
+        <div class="table-defilante">
+        <table class="table-registre">
+          <thead><tr><th>Courrier</th><th>Remis à</th><th>Le</th><th>Preuve</th><th></th></tr></thead>
+          <tbody>
+          {% for r in remis %}
+            <tr>
+              <td><strong>{{ r.objet }}</strong><div class="aide">{{ r.organisation }}</div></td>
+              <td>{{ r.remise.nom }}{% if r.remise.fonction %}<div class="aide">{{ r.remise.fonction }}</div>{% endif %}</td>
+              <td>{{ r.remis_affiche }}</td>
+              <td>
+                {% if r.accuse %}<a class="lien-action" href="{{ url_for('remises.piece', rid=r.id, nom='accuse.pdf') }}" target="_blank" rel="noopener">Accusé PDF</a>{% endif %}
+                {% if r.lien_accuse %}<br><a class="lien-action" href="{{ r.lien_accuse }}" target="_blank" rel="noopener">WorkDrive</a>{% endif %}
+              </td>
+              <td><a class="lien-action" href="{{ url_for('remises.detail', rid=r.id) }}">Détail</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="vide">Aucune remise enregistrée pour l'instant.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+</body>
+</html>

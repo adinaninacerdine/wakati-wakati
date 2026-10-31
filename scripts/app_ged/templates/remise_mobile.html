@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#03224C">
+<title>Remise de courrier — WAKATI</title>
+<style>
+  :root {
+    --navy: #03224C; --rouge: #E60E06; --fond: #F2F5F9; --surface: #FFFFFF;
+    --texte: #1B2733; --doux: #5B6B7F; --bord: #C9D6E5; --vert: #1E7A4C; --vert-fond: #E8F5EE;
+    --rouge-fond: #FDECEB;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--fond); color: var(--texte);
+    font-family: Calibri, "Segoe UI", Roboto, Arial, sans-serif; font-size: 16px; }
+  header { background: var(--navy); color: #fff; padding: 14px 16px calc(14px) 16px;
+    padding-top: calc(14px + env(safe-area-inset-top)); }
+  header .marque { letter-spacing: 6px; font-weight: 700; font-size: 15px; }
+  header .slogan { color: var(--rouge); font-size: 11px; letter-spacing: 3px; margin-top: 2px; }
+  header h1 { font-weight: 400; font-size: 20px; margin: 10px 0 0; }
+  main { padding: 16px; max-width: 560px; margin: 0 auto 40px; }
+  .carte { background: var(--surface); border: 1px solid var(--bord); border-radius: 10px;
+    padding: 16px; margin-bottom: 14px; }
+  .objet { font-weight: 700; font-size: 17px; color: var(--navy); line-height: 1.3; }
+  .meta { color: var(--doux); font-size: 14px; margin-top: 6px; }
+  .dest { margin-top: 10px; font-size: 15px; line-height: 1.4; }
+  .dest strong { color: var(--navy); }
+  .note { margin-top: 10px; padding: 8px 10px; background: var(--fond); border-radius: 6px; font-size: 14px; }
+  .onglets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .onglets button { background: var(--surface); color: var(--navy); border: 2px solid var(--bord);
+    border-radius: 10px; padding: 12px 8px; font-size: 15px; font-weight: 700; font-family: inherit; }
+  .onglets button[aria-selected="true"] { border-color: var(--navy); background: var(--navy); color: #fff; }
+  .onglets button.echec[aria-selected="true"] { border-color: var(--rouge); background: var(--rouge); }
+  label { display: block; font-weight: 700; color: var(--navy); margin: 14px 0 6px; font-size: 15px; }
+  label .opt { font-weight: 400; color: var(--doux); font-size: 13px; }
+  input[type=text], select, textarea { width: 100%; font-size: 17px; padding: 12px; border-radius: 8px;
+    border: 1px solid var(--bord); background: #fff; color: var(--texte); font-family: inherit; }
+  textarea { min-height: 80px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--navy); outline-offset: -1px; }
+  .cadre-signature { position: relative; border: 2px dashed var(--navy); border-radius: 10px;
+    background: #fff; height: 200px; touch-action: none; overflow: hidden; }
+  .cadre-signature canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  .cadre-signature .invite { position: absolute; inset: auto 0 10px 0; text-align: center;
+    color: var(--doux); font-size: 13px; pointer-events: none; }
+  .ligne-sig { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+  .effacer { background: none; border: 0; color: var(--rouge); font-size: 14px; font-weight: 700;
+    padding: 6px 0; font-family: inherit; }
+  .photo { display: flex; gap: 12px; align-items: center; }
+  .photo label.bouton-photo { margin: 0; flex: 1; text-align: center; background: var(--fond);
+    border: 2px solid var(--bord); border-radius: 10px; padding: 14px 10px; font-size: 15px; cursor: pointer; }
+  .photo input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .photo img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--bord); display: none; }
+  .motifs label { display: flex; gap: 10px; align-items: center; font-weight: 400; color: var(--texte);
+    background: #fff; border: 1px solid var(--bord); border-radius: 8px; padding: 12px; margin: 8px 0; }
+  .motifs input { width: 22px; height: 22px; accent-color: var(--rouge); }
+  .gps { font-size: 13px; color: var(--doux); margin-top: 14px; }
+  .gps.ok { color: var(--vert); }
+  .envoyer { width: 100%; margin-top: 20px; padding: 16px; border: 0; border-radius: 10px;
+    font-size: 18px; font-weight: 700; color: #fff; background: var(--navy); font-family: inherit; }
+  .envoyer.echec { background: var(--rouge); }
+  .envoyer:disabled { opacity: .55; }
+  .message { padding: 12px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 15px; }
+  .message.erreur { background: var(--rouge-fond); color: #8E1109; border-left: 4px solid var(--rouge); }
+  .message.info { background: #fff; border-left: 4px solid var(--navy); }
+  .etat { text-align: center; padding: 26px 16px; }
+  .etat .grand { font-size: 44px; line-height: 1; }
+  .etat.ok { background: var(--vert-fond); border-color: #A9D9BF; }
+  .etat h2 { color: var(--navy); font-weight: 700; font-size: 19px; margin: 10px 0 6px; }
+  footer { text-align: center; color: var(--doux); font-size: 12px; padding: 10px 16px 30px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="marque">W A K A T I</div>
+  <div class="slogan">NDUWO UWO</div>
+  <h1>Remise de courrier</h1>
+</header>
+
+<main>
+{% if etat == 'inconnu' %}
+  <div class="carte etat"><div class="grand">⚠</div>
+    <h2>Bordereau introuvable</h2>
+    <p>Ce lien n'est pas valide. Demandez un nouveau QR code au service courrier.</p></div>
+
+{% elif etat == 'annule' %}
+  <div class="carte etat"><div class="grand">⚠</div>
+    <h2>Bordereau annulé</h2>
+    <p>Ce courrier ne doit plus être remis avec ce bordereau. Contactez le service courrier.</p></div>
+
+{% elif etat == 'expire' %}
+  <div class="carte etat"><div class="grand">⌛</div>
+    <h2>Lien expiré</h2>
+    <p>Demandez au service courrier de prolonger le bordereau.</p></div>
+
+{% elif etat == 'remis' %}
+  <div class="carte etat ok"><div class="grand">✓</div>
+    <h2>Courrier remis</h2>
+    <p>Remis à <strong>{{ r.remise.nom }}</strong>{% if r.remise.fonction %} ({{ r.remise.fonction }}){% endif %}<br>
+       le {{ r.remis_affiche }}.</p>
+    <p class="meta">L'accusé de remise est enregistré dans la GED. Vous pouvez fermer cette page.</p></div>
+  <div class="carte"><div class="objet">{{ r.objet }}</div>
+    {% if r.reference %}<div class="meta">Réf. {{ r.reference }}</div>{% endif %}</div>
+
+{% else %}
+  {% if erreur %}<div class="message erreur" role="alert">{{ erreur }}</div>{% endif %}
+  {% if message %}<div class="message info" role="status">{{ message }}</div>{% endif %}
+
+  <div class="carte">
+    <div class="objet">{{ r.objet }}</div>
+    {% if r.reference %}<div class="meta">Réf. {{ r.reference }}</div>{% endif %}
+    <div class="dest">
+      {% for l in r.destinataire %}{% if loop.first %}<strong>{{ l }}</strong>{% else %}{{ l }}{% endif %}<br>{% endfor %}
+      {% for l in r.adresse %}<span class="meta">{{ l }}</span><br>{% endfor %}
+    </div>
+    {% if r.note %}<div class="note">{{ r.note }}</div>{% endif %}
+    {% if r.nb_echecs %}<div class="meta">{{ r.nb_echecs }} tentative{{ 's' if r.nb_echecs > 1 }} précédente{{ 's' if r.nb_echecs > 1 }} sans remise.</div>{% endif %}
+  </div>
+
+  <div class="onglets" role="tablist">
+    <button type="button" role="tab" id="t_remettre" aria-selected="{{ 'false' if onglet == 'echec' else 'true' }}" aria-controls="p_remettre">✓ Remettre</button>
+    <button type="button" role="tab" id="t_echec" class="echec" aria-selected="{{ 'true' if onglet == 'echec' else 'false' }}" aria-controls="p_echec">✗ Remise impossible</button>
+  </div>
+
+  {# ---------- REMISE ---------- #}
+  <form id="p_remettre" class="carte" method="POST" enctype="multipart/form-data"
+        action="{{ url_for('remise_public.remettre', jeton=jeton) }}" {% if onglet == 'echec' %}hidden{% endif %}>
+    <label for="r_nom">Nom de la personne qui reçoit</label>
+    <input type="text" id="r_nom" name="nom" autocomplete="name" required value="{{ (saisie or {}).get('nom', '') }}">
+
+    <label for="r_fonction">Sa fonction</label>
+    <input type="text" id="r_fonction" name="fonction" required placeholder="Secrétaire, agent du courrier…"
+           value="{{ (saisie or {}).get('fonction', '') }}">
+
+    <label>Signature du destinataire</label>
+    <div class="cadre-signature" id="cadre_sig">
+      <canvas id="sig" aria-label="Zone de signature"></canvas>
+      <div class="invite" id="invite_sig">Signer ici avec le doigt</div>
+    </div>
+    <div class="ligne-sig">
+      <span class="meta" id="etat_sig">Signature vide</span>
+      <button type="button" class="effacer" id="effacer_sig">Effacer</button>
+    </div>
+    <input type="hidden" name="signature" id="r_signature">
+
+    <label>Photo du cachet ou de la décharge <span class="opt">— recommandée</span></label>
+    <div class="photo">
+      <label class="bouton-photo" for="r_photo">📷 Prendre la photo</label>
+      <input type="file" id="r_photo" name="photo" accept="image/*" capture="environment">
+      <img id="r_apercu" alt="Aperçu de la photo">
+    </div>
+
+    <label for="r_coursier">Votre nom (coursier) <span class="opt">— facultatif</span></label>
+    <input type="text" id="r_coursier" name="coursier" value="{{ (saisie or {}).get('coursier', r.coursier or '') }}">
+
+    {% for n in ['lat', 'lon', 'precision', 'gps_statut'] %}<input type="hidden" name="{{ n }}" class="gps-{{ n }}">{% endfor %}
+    <div class="gps" role="status">Position : recherche…</div>
+
+    <button type="submit" class="envoyer" id="r_envoyer">Valider la remise</button>
+  </form>
+
+  {# ---------- ÉCHEC ---------- #}
+  <form id="p_echec" class="carte" method="POST" enctype="multipart/form-data"
+        action="{{ url_for('remise_public.echec', jeton=jeton) }}" {% if onglet != 'echec' %}hidden{% endif %}>
+    <label>Pourquoi le courrier n'a pas été remis ?</label>
+    <div class="motifs">
+      {% for code, lib in motifs.items() %}
+      <label><input type="radio" name="motif" value="{{ code }}" required
+             {% if (saisie or {}).get('motif') == code %}checked{% endif %}> {{ lib }}</label>
+      {% endfor %}
+    </div>
+
+    <label for="e_commentaire">Précisions <span class="opt">— obligatoires pour « Autre motif »</span></label>
+    <textarea id="e_commentaire" name="commentaire" maxlength="300">{{ (saisie or {}).get('commentaire', '') }}</textarea>
+
+    <label>Photo <span class="opt">— facultative (porte fermée, adresse…)</span></label>
+    <div class="photo">
+      <label class="bouton-photo" for="e_photo">📷 Prendre la photo</label>
+      <input type="file" id="e_photo" name="photo" accept="image/*" capture="environment">
+      <img id="e_apercu" alt="Aperçu de la photo">
+    </div>
+
+    <label for="e_coursier">Votre nom (coursier) <span class="opt">— facultatif</span></label>
+    <input type="text" id="e_coursier" name="coursier" value="{{ (saisie or {}).get('coursier', r.coursier or '') }}">
+
+    {% for n in ['lat', 'lon', 'precision', 'gps_statut'] %}<input type="hidden" name="{{ n }}" class="gps-{{ n }}">{% endfor %}
+    <div class="gps" role="status">Position : recherche…</div>
+
+    <button type="submit" class="envoyer echec">Enregistrer l'échec</button>
+  </form>
+{% endif %}
+</main>
+
+<footer>Huri Money SA — WAKATI Mobile Money | Union des Comores</footer>
+
+{% if r and not etat %}
+<script>
+(function () {
+  // ---------- Onglets ----------
+  var tR = document.getElementById('t_remettre'), tE = document.getElementById('t_echec');
+  var pR = document.getElementById('p_remettre'), pE = document.getElementById('p_echec');
+  function choisir(echec) {
+    tR.setAttribute('aria-selected', echec ? 'false' : 'true');
+    tE.setAttribute('aria-selected', echec ? 'true' : 'false');
+    pR.hidden = echec; pE.hidden = !echec;
+    if (!echec) { setTimeout(dimensionner, 0); }
+  }
+  tR.addEventListener('click', function () { choisir(false); });
+  tE.addEventListener('click', function () { choisir(true); });
+
+  // ---------- Signature au doigt ----------
+  var canvas = document.getElementById('sig'), ctx = canvas.getContext('2d');
+  var trace = false, signe = false, dernier = null;
+  function dimensionner() {
+    var r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    if (!r.width) { return; }
+    var image = signe ? canvas.toDataURL() : null;
+    canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#03224C';
+    if (image) { var img = new Image(); img.onload = function () { ctx.drawImage(img, 0, 0, r.width, r.height); }; img.src = image; }
+  }
+  function point(e) { var r = canvas.getBoundingClientRect(); return {x: e.clientX - r.left, y: e.clientY - r.top}; }
+  canvas.addEventListener('pointerdown', function (e) {
+    e.preventDefault(); canvas.setPointerCapture(e.pointerId); trace = true; dernier = point(e);
+    ctx.beginPath(); ctx.arc(dernier.x, dernier.y, 1.1, 0, Math.PI * 2); ctx.fillStyle = '#03224C'; ctx.fill();
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (!trace) { return; }
+    e.preventDefault();
+    var p = point(e);
+    ctx.beginPath(); ctx.moveTo(dernier.x, dernier.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    dernier = p;
+    if (!signe) { signe = true; document.getElementById('invite_sig').hidden = true;
+                  document.getElementById('etat_sig').textContent = 'Signature enregistrée'; }
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) {
+    canvas.addEventListener(n, function () { trace = false; });
+  });
+  document.getElementById('effacer_sig').addEventListener('click', function () {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); signe = false;
+    document.getElementById('invite_sig').hidden = false;
+    document.getElementById('etat_sig').textContent = 'Signature vide';
+  });
+  window.addEventListener('resize', dimensionner);
+  dimensionner();
+
+  // ---------- Photo : réduite sur le téléphone avant l'envoi ----------
+  function preparerPhoto(idInput, idApercu) {
+    var input = document.getElementById(idInput), apercu = document.getElementById(idApercu);
+    input.addEventListener('change', function () {
+      var f = input.files && input.files[0];
+      if (!f) { apercu.style.display = 'none'; return; }
+      var url = URL.createObjectURL(f), img = new Image();
+      img.onload = function () {
+        apercu.src = url; apercu.style.display = 'block';
+        var max = 1600, w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, max / Math.max(w, h));
+        if (k >= 1 || !window.DataTransfer) { return; }
+        var c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(function (b) {
+          if (!b) { return; }
+          try {
+            var dt = new DataTransfer();
+            dt.items.add(new File([b], 'photo.jpg', {type: 'image/jpeg'}));
+            input.files = dt.files;
+          } catch (err) { /* navigateur ancien : la photo part telle quelle */ }
+        }, 'image/jpeg', 0.82);
+      };
+      img.src = url;
+    });
+  }
+  preparerPhoto('r_photo', 'r_apercu');
+  preparerPhoto('e_photo', 'e_apercu');
+
+  // ---------- Position GPS ----------
+  function remplir(champ, valeur) {
+    document.querySelectorAll('.gps-' + champ).forEach(function (el) { el.value = valeur; });
+  }
+  function texteGps(t, ok) {
+    document.querySelectorAll('.gps').forEach(function (el) { el.textContent = 'Position : ' + t; el.classList.toggle('ok', !!ok); });
+  }
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      remplir('lat', pos.coords.latitude); remplir('lon', pos.coords.longitude);
+      remplir('precision', pos.coords.accuracy); remplir('gps_statut', 'ok');
+      texteGps('relevée (± ' + Math.round(pos.coords.accuracy) + ' m)', true);
+    }, function (err) {
+      remplir('gps_statut', err.code === 1 ? 'refuse' : 'indisponible');
+      texteGps(err.code === 1 ? 'refusée — autorisez la localisation si possible' : 'indisponible', false);
+    }, {enableHighAccuracy: true, timeout: 20000, maximumAge: 60000});
+  } else {
+    remplir('gps_statut', 'indisponible'); texteGps('indisponible sur ce téléphone', false);
+  }
+
+  // ---------- Envoi ----------
+  pR.addEventListener('submit', function (e) {
+    if (!signe) { e.preventDefault(); alertePage('Faites signer le destinataire dans le cadre.'); return; }
+    document.getElementById('r_signature').value = canvas.toDataURL('image/png');
+    var b = document.getElementById('r_envoyer'); b.disabled = true; b.textContent = 'Envoi en cours…';
+  });
+  pE.addEventListener('submit', function () {
+    var b = pE.querySelector('.envoyer'); b.disabled = true; b.textContent = 'Envoi en cours…';
+  });
+  function alertePage(t) {
+    var m = document.querySelector('.message.erreur');
+    if (!m) { m = document.createElement('div'); m.className = 'message erreur'; m.setAttribute('role', 'alert');
+              document.querySelector('main').insertBefore(m, document.querySelector('main').firstChild); }
+    m.textContent = t; window.scrollTo({top: 0, behavior: 'smooth'});
+  }
+})();
+</script>
+{% endif %}
+</body>
+</html>

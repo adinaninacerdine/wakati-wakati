@@ -34,6 +34,12 @@
       <span class="ico">✉</span> Courrier de réponse
       {% if cpt_courrier and cpt_courrier.en_retard %}<span class="pastille">{{ cpt_courrier.en_retard }}</span>{% endif %}
     </a>
+    {% if remise_active %}
+    <a class="item {% if page == 'remises' %}actif{% endif %}" href="{{ url_for('remises.liste') }}">
+      <span class="ico">➜</span> Remises coursier
+      {% if cpt_courrier and cpt_courrier.remises_en_cours %}<span class="pastille">{{ cpt_courrier.remises_en_cours }}</span>{% endif %}
+    </a>
+    {% endif %}
     {% if courrier_responsable %}
     <a class="item {% if page == 'banque' %}actif{% endif %}" href="{{ url_for('courrier.banque') }}">
       <span class="ico">☰</span> Banque de courriers

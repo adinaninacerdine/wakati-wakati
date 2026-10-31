@@ -261,6 +261,42 @@
           </div>
         </section>
 
+        {% if remises_projet is not none and rep.statut in ['signe', 'archive'] %}
+        <section class="bloc">
+          <h2><span>Remise au destinataire</span>
+            {% if rep.remis_le %}<span class="badge ok">Remis</span>{% endif %}</h2>
+          <div class="corps">
+            {% for r in remises_projet %}
+            <div class="ligne-remise">
+              {% if r.statut == 'remis' %}
+                <strong>Remis à {{ r.remise.nom }}</strong>{% if r.remise.fonction %} ({{ r.remise.fonction }}){% endif %}
+                <div class="aide">le {{ r.remis_affiche }} · {{ r.gps_texte }}</div>
+                {% if r.accuse %}<a class="lien-action" href="{{ url_for('remises.piece', rid=r.id, nom='accuse.pdf') }}" target="_blank" rel="noopener">Accusé de remise</a>{% endif %}
+                {% if r.lien_accuse %} · <a class="lien-action" href="{{ r.lien_accuse }}" target="_blank" rel="noopener">WorkDrive</a>{% endif %}
+              {% elif r.statut == 'en_cours' %}
+                <strong>{{ 'Lien expiré' if r.expire else 'En cours de remise' }}</strong>{% if r.coursier %} — {{ r.coursier }}{% endif %}
+                {% if r.nb_echecs %}<div class="aide">{{ r.nb_echecs }} tentative{{ 's' if r.nb_echecs > 1 }} sans remise : {{ (r.tentatives_aff|last).motif_lib }}</div>{% endif %}
+              {% else %}
+                <span class="aide">Bordereau annulé ({{ r.cree_affiche }})</span>
+              {% endif %}
+              <div><a class="lien-action" href="{{ url_for('remises.detail', rid=r.id) }}">Voir le bordereau</a></div>
+            </div>
+            {% endfor %}
+            {% if not remises_projet or remises_projet|selectattr('statut', 'ne', 'annule')|list|length == 0 %}
+            <form method="POST" action="{{ url_for('remises.creer') }}">
+              <input type="hidden" name="ref" value="{{ rep.ref }}">
+              <div class="champ"><label for="rm_coursier">Coursier</label>
+                <input type="text" id="rm_coursier" name="coursier" placeholder="Nom du coursier (facultatif)"></div>
+              <div class="champ"><label for="rm_note">Consigne</label>
+                <input type="text" id="rm_note" name="note" placeholder="Remettre au secrétariat du destinataire"></div>
+              <button type="submit" class="mineur">Créer le bordereau de remise</button>
+              <p class="aide">Le coursier scanne le QR code ; le destinataire signe sur son téléphone. L'accusé s'ajoute à l'historique.</p>
+            </form>
+            {% endif %}
+          </div>
+        </section>
+        {% endif %}
+
         <section class="bloc">
           <h2>Historique</h2>
           <div class="corps">
