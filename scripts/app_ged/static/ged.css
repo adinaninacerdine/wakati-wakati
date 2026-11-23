@@ -608,3 +608,14 @@ td.actions-cellule form { display: inline; }
 .bloc-decision { border-color: var(--rouge); }
 .bloc-decision > h2 { background: var(--rouge-fond); color: var(--rouge-txt); }
 [hidden] { display: none !important; }
+
+/* Notes internes : modèles, recherche, IA */
+.barre-modele > .corps, .barre-recherche-notes > .corps { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.barre-modele select { min-width: 0; width: auto; flex: 1 1 280px; }
+.barre-recherche-notes input[type="search"] { flex: 1 1 320px; min-width: 0; padding: 8px 10px; border: 1px solid var(--navy-bord);
+  border-radius: 4px; font-family: inherit; font-size: 14px; background: var(--surface); color: var(--texte); }
+.barre-recherche-notes select { flex: 0 0 200px; width: auto; }
+.zones-restantes { color: var(--rouge-txt); font-weight: 600; margin-left: 4px; }
+@media (max-width: 640px) {
+  .barre-recherche-notes select, .barre-modele select { flex: 1 1 100%; }
+}

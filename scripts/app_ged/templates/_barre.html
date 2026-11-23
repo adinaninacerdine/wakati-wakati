@@ -1,6 +1,7 @@
 {# Barre laterale partagee — modifier ICI et nulle part ailleurs.
    Chaque page passe la variable `page` :
-   recherche | courriers | tableau | visa | nouveau | courrier | banque | parametres | agenda | rdv #}
+   recherche | courriers | tableau | visa | nouveau | courrier | banque | parametres | agenda | rdv
+   | remises | notes | notes_modeles | notes_personnel #}
 <aside class="barre">
   <div class="marque-zone">
     <div class="marque">W A K A T I</div>
@@ -55,6 +56,9 @@
     <a class="item {% if page == 'notes' %}actif{% endif %}" href="{{ url_for('notes.liste') }}">
       <span class="ico">✉</span> Notes internes
       {% if cpt_notes and cpt_notes.notes_a_valider %}<span class="pastille">{{ cpt_notes.notes_a_valider }}</span>{% endif %}
+    </a>
+    <a class="item {% if page == 'notes_modeles' %}actif{% endif %}" href="{{ url_for('notes.ecran_modeles') }}">
+      <span class="ico">☰</span> Modèles de notes
     </a>
     <a class="item {% if page == 'notes_personnel' %}actif{% endif %}" href="{{ url_for('notes.ecran_personnel') }}">
       <span class="ico">☷</span> Annuaire du personnel

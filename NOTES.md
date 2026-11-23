@@ -34,6 +34,26 @@ Mise en œuvre du § 5 du manuel « Gestion des courriers digitalisée »
 Intérim : dans Paramètres > Signataires, la colonne « Intérim par » (ex. DG pour DOP)
 donne au titulaire de l'intérim le droit de rédiger, viser et signer pour la direction.
 
+## Aides à la rédaction
+
+- **Modèles de notes** (menu Courrier interne > Modèles de notes) : 14 modèles fournis
+  (horaires, réunion, congés, intérim, règlement intérieur, confidentialité des données
+  clients, procédure, fermeture des bureaux, lancement d'offre, demande d'achat,
+  intervention informatique, demande de document, mise à disposition d'agent ou de
+  matériel). La responsable GED les modifie, en crée et les désactive ; toute note peut
+  devenir un modèle (« Enregistrer comme modèle »). Un modèle supprimé n'est pas recréé.
+- **Zones `[à compléter : …]`** : la soumission est refusée tant qu'il en reste dans
+  l'objet ou le texte (même règle que les courriers).
+- **Assistance IA** (fournisseur, clé et modèle des Paramètres du courrier) :
+  « Rédiger le texte » à partir des points clés (complète le modèle s'il y en a un),
+  « Corriger et reformuler » le texte existant, « Annuler la proposition ».
+  Courriels, téléphones et numéros de compte sont remplacés par des repères avant l'envoi
+  puis restaurés : ils ne quittent pas la GED. Chaque usage est tracé dans l'historique.
+  Une note cochée **confidentielle** n'a pas d'IA.
+- **Réutilisation** : la recherche de la liste des notes porte sur l'objet, le texte, la
+  référence et la direction, y compris les notes diffusées par les autres directions
+  (sauf confidentielles). « Dupliquer en nouveau brouillon » repart d'une note existante.
+
 ## Mise en service
 
 1. `auth_config.py` (VPS) : ajouter les adresses des directeurs à `UTILISATEURS_AUTORISES`.
@@ -44,4 +64,5 @@ donne au titulaire de l'intérim le droit de rédiger, viser et signer pour la d
    `python setup_folders.py` (aperçu) puis `python setup_folders.py --confirm`, puis
    `docker compose restart ged` (folders_map.json est monté en lecture seule).
 
-Données : `courrier/notes/notes.json`, `courrier/notes/personnel.json`, `courrier/notes/<id>/note.pdf`.
+Données : `courrier/notes/notes.json`, `courrier/notes/personnel.json`, `courrier/notes/modeles.json`,
+`courrier/notes/<id>/note.pdf`.

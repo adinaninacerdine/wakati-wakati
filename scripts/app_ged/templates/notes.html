@@ -16,6 +16,7 @@
   <header class="entete">
     <h1>Notes internes</h1>
     <div class="contexte">
+      <a class="lien-action" href="{{ url_for('notes.ecran_modeles') }}">Modèles</a>
       <a class="bouton" href="{{ url_for('notes.nouvelle') }}">＋ Nouvelle note</a>
     </div>
   </header>
@@ -27,6 +28,18 @@
         <div class="flash {{ category }}">{{ message }}</div>
       {% endfor %}
     {% endwith %}
+
+    <form method="GET" action="{{ url_for('notes.liste') }}" class="bloc barre-recherche-notes">
+      <div class="corps">
+        <input type="search" name="q" value="{{ q }}" placeholder="Rechercher dans les notes : objet, texte, référence, direction…" aria-label="Rechercher dans les notes">
+        <select name="type" aria-label="Type">
+          <option value="">Tous les types</option>
+          {% for code, t in types_note.items() %}<option value="{{ code }}" {% if type_f == code %}selected{% endif %}>{{ t.nom }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="mineur">Rechercher</button>
+        {% if resultats is not none %}<a class="lien-action" href="{{ url_for('notes.liste') }}">Effacer</a>{% endif %}
+      </div>
+    </form>
 
     {% macro tableau(liste, colonne_etat) %}
     <div class="table-defilante">
@@ -59,6 +72,17 @@
     </div>
     {% endmacro %}
 
+    {% if resultats is not none %}
+    <section class="bloc">
+      <h2><span>Résultats{% if q %} pour « {{ q }} »{% endif %}</span><span class="compte">{{ resultats|length }}</span></h2>
+      <div class="corps">
+        {% if resultats %}{{ tableau(resultats, 'État') }}
+        <p class="aide">Ouvrez une note puis « Dupliquer en nouveau brouillon » pour repartir de son texte. Les notes diffusées
+          par les autres directions apparaissent ici, sauf les notes confidentielles.</p>
+        {% else %}<p class="vide">Aucune note ne correspond.</p>{% endif %}
+      </div>
+    </section>
+    {% else %}
     <section class="bloc">
       <h2><span>À viser ou signer</span>{% if a_valider %}<span class="compte">{{ a_valider|length }}</span>{% endif %}</h2>
       <div class="corps">
@@ -79,6 +103,7 @@
         {% if diffusees %}{{ tableau(diffusees, 'Lecture / traitement') }}{% else %}<p class="vide">Aucune note diffusée pour l'instant.</p>{% endif %}
       </div>
     </section>
+    {% endif %}
 
     <p class="aide">Circuit (manuel de gestion des courriers, § 5) : visa du DAF pour les notes de service, circulaires et mises à disposition ;
       signature du DG pour les circulaires, les mises à disposition et les notes de service importantes ; les demandes internes sont

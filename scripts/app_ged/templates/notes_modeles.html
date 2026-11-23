@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modèles de notes — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Modèles de notes</h1>
+    <div class="contexte">
+      {{ tout|selectattr('actif')|list|length }} modèle(s) actif(s)
+      {% if responsable %}&nbsp;<a class="bouton" href="{{ url_for('notes.ecran_modeles', nouveau=1) }}">＋ Nouveau modèle</a>{% endif %}
+    </div>
+  </header>
+
+  <div class="contenu large">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if edite and responsable %}
+    {% set m = edite %}
+    <section class="bloc">
+      <h2>{% if m.id %}Modifier : {{ m.nom }}{% else %}Nouveau modèle{% endif %}</h2>
+      <div class="corps">
+        <form method="POST" action="{{ url_for('notes.ecran_modeles') }}" id="form_modele_note">
+          <input type="hidden" name="id" value="{{ m.id or '' }}">
+          <div class="rang">
+            <div class="champ"><label for="m_nom">Nom du modèle</label>
+              <input type="text" id="m_nom" name="nom" value="{{ m.nom or '' }}" required maxlength="120"></div>
+            <div class="champ" style="flex:0 0 240px;"><label for="m_type">Type</label>
+              <select id="m_type" name="type">
+                {% for code, t in types_note.items() %}<option value="{{ code }}" {% if m.type == code %}selected{% endif %}>{{ t.nom }}</option>{% endfor %}
+              </select></div>
+          </div>
+          <div class="champ"><label for="m_objet">Objet proposé</label>
+            <input type="text" id="m_objet" name="objet" value="{{ m.objet or '' }}" maxlength="200"></div>
+          <div class="champ"><label for="m_corps">Texte</label>
+            <textarea id="m_corps" name="corps" class="corps-lettre" required>{{ m.corps or '' }}</textarea>
+            <div class="aide">Écrivez <code>[à compléter : description]</code> à chaque endroit propre à une note (date, nom, horaire…) :
+              la note ne pourra pas être soumise tant qu'une zone reste. L'assistance IA les complète à partir des points clés du rédacteur.</div></div>
+          <div class="champ">
+            <label>Destinataires proposés</label>
+            <label class="case"><input type="checkbox" name="tous" {% if (m.destinataires or {}).tous %}checked{% endif %}> Tout le personnel</label>
+            <div class="services-cases">
+              {% for code, nom in services.items() %}
+              <label class="case"><input type="checkbox" name="services" value="{{ code }}" {% if code in ((m.destinataires or {}).services or []) %}checked{% endif %}> {{ nom }}</label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="rang">
+            <div class="champ"><label for="m_copies">Ampliation (séparées par ;)</label>
+              <input type="text" id="m_copies" name="copies" value="{{ m.copies or '' }}"></div>
+            <div class="champ" style="flex:0 0 200px;"><label for="m_delai">Délai demande (heures)</label>
+              <input type="number" id="m_delai" name="delai_h" min="1" max="240" value="{{ m.delai_h or 24 }}"></div>
+          </div>
+          <label class="case"><input type="checkbox" name="importante" {% if m.importante %}checked{% endif %}> Note de service importante (signature DG)</label>
+          <label class="case"><input type="checkbox" name="actif" {% if m.actif %}checked{% endif %}> Actif : proposé à la création d'une note</label>
+          <div class="actions">
+            <button type="submit">Enregistrer le modèle</button>
+            <a class="lien-action" href="{{ url_for('notes.ecran_modeles') }}">Annuler</a>
+          </div>
+        </form>
+        {% if m.id %}
+        <form method="POST" action="{{ url_for('notes.supprimer_modele', mid=m.id) }}" onsubmit="return confirm('Supprimer définitivement ce modèle ?');">
+          <button type="submit" class="discret">Supprimer ce modèle</button>
+        </form>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% for code, t in types_note.items() %}
+    {% set liste = tout|selectattr('type', 'equalto', code)|list %}
+    <section class="bloc">
+      <h2><span>{{ t.nom }}</span><span class="compte">{{ liste|length }}</span></h2>
+      <div class="corps">
+        {% if liste %}
+        <div class="table-defilante">
+        <table class="table-registre">
+          <thead><tr><th>Modèle</th><th>Objet proposé</th><th>Utilisé</th><th></th></tr></thead>
+          <tbody>
+          {% for m in liste %}
+            <tr {% if not m.actif %}style="opacity:.55;"{% endif %}>
+              <td><strong>{{ m.nom }}</strong>{% if not m.actif %} <span class="badge">inactif</span>{% endif %}
+                <div class="aide" style="margin:0;">{{ m.origine }}</div></td>
+              <td>{{ m.objet }}</td>
+              <td>{{ m.utilisations or 0 }}×</td>
+              <td style="white-space:nowrap;">
+                {% if m.actif %}<a class="lien-action" href="{{ url_for('notes.nouvelle', modele=m.id) }}">Utiliser</a>{% endif %}
+                {% if responsable %}&nbsp;<a class="lien-action" href="{{ url_for('notes.ecran_modeles', id=m.id) }}">Modifier</a>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="vide">Aucun modèle de ce type.{% if responsable %} <a href="{{ url_for('notes.ecran_modeles', nouveau=1, type=code) }}">En créer un</a>.{% endif %}</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endfor %}
+
+    <p class="aide">Une note signée peut aussi devenir un modèle : ouvrez-la puis « Enregistrer comme modèle ».</p>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+</body>
+</html>

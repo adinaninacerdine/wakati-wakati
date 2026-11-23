@@ -26,8 +26,16 @@ des courriers (Admin/Archives, § 5) dans la GED :
 Les destinataires n'ont pas de compte GED : le lien personnel (jeton)
 tient lieu d'accès à cette seule note.
 
+Aides à la rédaction (comme pour les courriers) :
+  - banque de modèles par type, avec zones « [à compléter : …] » qui bloquent
+    la soumission tant qu'elles restent dans le texte ;
+  - assistance IA (fournisseur, clé et anonymisation des Paramètres du
+    courrier) : rédiger depuis des points clés ou corriger le texte ;
+    désactivée pour une note marquée confidentielle ;
+  - recherche dans les notes déjà diffusées et duplication.
+
 Données : courrier/notes/notes.json, courrier/notes/personnel.json,
-courrier/notes/<id>/ (PDF).
+courrier/notes/modeles.json, courrier/notes/<id>/ (PDF).
 """
 
 import functools
@@ -48,6 +56,7 @@ bp_note_public = Blueprint("note_public", __name__, url_prefix="/n")
 DOSSIER = C.DONNEES / "notes"
 F_NOTES = DOSSIER / "notes.json"
 F_PERSONNEL = DOSSIER / "personnel.json"
+F_MODELES = DOSSIER / "modeles.json"
 
 # ---------------------------------------------------------------------------
 # Référentiels
@@ -134,6 +143,228 @@ def _services():
 
 
 # ---------------------------------------------------------------------------
+# Banque de modèles de notes
+# ---------------------------------------------------------------------------
+# Les zones « [à compléter : …] » bloquent la soumission tant qu'elles restent
+# dans le texte (même règle que les courriers). Les modèles par défaut sont
+# ajoutés une seule fois : un modèle supprimé n'est pas recréé.
+Z = "[à compléter : {}]"
+
+
+def _z(t):
+    return Z.format(t)
+
+
+MODELES_DEFAUT = [
+    {"id": "DEF-NS-HORAIRES", "type": "NS", "nom": "Horaires de travail",
+     "objet": f"Horaires de travail {_z('période')}",
+     "tous": True,
+     "corps": (f"Il est porté à la connaissance de l'ensemble du personnel qu'à compter du "
+               f"{_z('date d’effet')}, les horaires de travail sont fixés comme suit :\n"
+               f"- du lundi au jeudi : {_z('horaires')} ;\n"
+               f"- le vendredi : {_z('horaires')} ;\n"
+               f"- le samedi : {_z('horaires ou repos')}.\n\n"
+               "Chaque responsable de service veille au respect de ces horaires et organise, "
+               "si nécessaire, une permanence pendant la pause.\n\n"
+               "La présente note annule et remplace toute disposition antérieure contraire.")},
+    {"id": "DEF-NS-REUNION", "type": "NS", "nom": "Convocation à une réunion",
+     "objet": f"Réunion {_z('objet de la réunion')}",
+     "corps": (f"Le personnel {_z('services ou personnes concernés')} est convié à une réunion "
+               f"le {_z('date')} à {_z('heure')}, {_z('lieu')}.\n\n"
+               "Ordre du jour :\n"
+               f"- {_z('point 1')} ;\n"
+               f"- {_z('point 2')}.\n\n"
+               "La présence de chacun est obligatoire. Toute absence doit être signalée à "
+               f"l'avance à {_z('interlocuteur')}.")},
+    {"id": "DEF-NS-CONGES", "type": "NS", "nom": "Planification des congés annuels",
+     "objet": f"Planification des congés annuels {_z('année')}",
+     "tous": True,
+     "corps": (f"Dans le cadre de la planification des congés annuels {_z('année')}, chaque agent "
+               "est invité à transmettre ses souhaits de dates à son responsable hiérarchique "
+               f"au plus tard le {_z('date limite')}.\n\n"
+               "Les responsables de service consolident les demandes et transmettent le planning "
+               f"de leur service à la Direction Administrative et Financière avant le {_z('date')}.\n\n"
+               "Le planning tient compte des nécessités de service : une permanence doit être "
+               "assurée dans chaque service pendant toute la période.")},
+    {"id": "DEF-NS-INTERIM", "type": "NS", "nom": "Désignation d'un intérim", "importante": True,
+     "objet": f"Intérim de {_z('fonction du titulaire')}",
+     "tous": True,
+     "corps": (f"Pendant l'absence de {_z('nom et fonction du titulaire')}, du {_z('date de début')} "
+               f"au {_z('date de fin')}, l'intérim est assuré par "
+               f"{_z('nom et fonction de l’intérimaire')}.\n\n"
+               f"À ce titre, l'intérimaire reçoit délégation pour {_z('périmètre de la délégation')}.\n\n"
+               "Les services sont priés de lui adresser, pendant cette période, toutes les "
+               f"affaires relevant de {_z('direction ou service')}.")},
+    {"id": "DEF-NS-REGLEMENT", "type": "NS", "nom": "Rappel d'une règle du règlement intérieur",
+     "objet": f"Rappel des règles de {_z('thème : ponctualité, tenue, absences…')}",
+     "tous": True,
+     "corps": (f"La Direction constate {_z('manquement constaté, sans nommer de personne')}.\n\n"
+               f"Il est rappelé à l'ensemble du personnel que {_z('règle applicable')}, "
+               f"conformément à {_z('article du règlement intérieur')}.\n\n"
+               f"Tout manquement constaté à compter du {_z('date')} exposera son auteur aux "
+               "mesures prévues par le règlement intérieur.")},
+    {"id": "DEF-NS-CONFIDENTIALITE", "type": "NS", "nom": "Confidentialité des données clients WAKATI",
+     "objet": "Confidentialité des données des clients WAKATI",
+     "tous": True, "importante": True,
+     "corps": ("Huri Money SA est placée sous la supervision de la Banque Centrale des Comores et "
+               "tenue au secret professionnel sur les données de ses clients WAKATI.\n\n"
+               "Il est rappelé à chaque agent que :\n"
+               "- les informations d'un client (identité, numéro, solde, transactions) ne sont "
+               "communiquées qu'au titulaire du compte, après vérification de son identité ;\n"
+               "- aucun code secret ni mot de passe n'est jamais demandé à un client ni "
+               "communiqué à un tiers ;\n"
+               "- toute demande d'information émanant d'un tiers ou d'une autorité est "
+               f"transmise à {_z('service compétent')}.\n\n"
+               "Tout manquement à ces règles constitue une faute grave.")},
+    {"id": "DEF-CIR-PROCEDURE", "type": "CIR", "nom": "Mise en place d'une procédure",
+     "objet": f"Mise en place de la procédure {_z('nom de la procédure')}",
+     "tous": True,
+     "corps": (f"À compter du {_z('date d’entrée en vigueur')}, la procédure {_z('nom')} "
+               f"s'applique à {_z('services ou personnes concernés')}.\n\n"
+               f"Elle a pour objet {_z('objectif de la procédure')}.\n\n"
+               "Ses principales étapes sont les suivantes :\n"
+               f"- {_z('étape 1')} ;\n"
+               f"- {_z('étape 2')} ;\n"
+               f"- {_z('étape 3')}.\n\n"
+               f"Le document complet est disponible {_z('emplacement')}. Pour toute question, "
+               f"adressez-vous à {_z('interlocuteur')}.")},
+    {"id": "DEF-CIR-FERMETURE", "type": "CIR", "nom": "Fermeture des bureaux / jour férié",
+     "objet": f"Fermeture des bureaux le {_z('date')}",
+     "tous": True,
+     "corps": (f"À l'occasion de {_z('événement')}, les bureaux de Huri Money SA seront fermés "
+               f"le {_z('date')}.\n\n"
+               f"Le service client et la plateforme WAKATI restent {_z('disponibles / permanence prévue')}.\n\n"
+               f"La reprise des activités est fixée au {_z('date et heure de reprise')}.")},
+    {"id": "DEF-CIR-LANCEMENT", "type": "CIR", "nom": "Lancement d'une offre ou d'une campagne WAKATI",
+     "objet": f"Lancement de {_z('offre ou campagne')}",
+     "tous": True,
+     "corps": (f"Huri Money SA lance, à compter du {_z('date')}, {_z('offre, service ou campagne WAKATI')}.\n\n"
+               f"Cette opération s'adresse à {_z('cible')} et prévoit {_z('contenu de l’offre')}.\n\n"
+               "Les équipes commerciales, le service client et le réseau d'agents doivent "
+               f"{_z('actions attendues')}. Les supports d'information sont disponibles auprès "
+               f"de {_z('service')}.")},
+    {"id": "DEF-DEM-ACHAT", "type": "DEM", "nom": "Demande d'achat ou de fournitures",
+     "objet": f"Demande de {_z('fournitures ou matériel')}",
+     "corps": (f"Pour les besoins de {_z('service ou activité')}, nous sollicitons l'acquisition de :\n"
+               f"- {_z('article et quantité')} ;\n"
+               f"- {_z('article et quantité')}.\n\n"
+               f"Ce besoin est motivé par {_z('justification')}.\n\n"
+               "Nous vous remercions de nous indiquer la suite réservée à cette demande et, le "
+               "cas échéant, le délai de livraison.")},
+    {"id": "DEF-DEM-INFORMATIQUE", "type": "DEM", "nom": "Demande d'intervention informatique",
+     "objet": f"Intervention technique : {_z('problème')}",
+     "corps": (f"Nous constatons depuis le {_z('date')} "
+               f"{_z('description du problème : poste, logiciel, accès, application WAKATI')}.\n\n"
+               f"Ce dysfonctionnement affecte {_z('utilisateurs ou activités concernés')}.\n\n"
+               "Nous vous remercions de bien vouloir intervenir et de nous informer de la "
+               "solution apportée.")},
+    {"id": "DEF-DEM-DOCUMENT", "type": "DEM", "nom": "Demande de document ou d'information",
+     "objet": f"Demande de {_z('document ou information')}",
+     "corps": (f"Dans le cadre de {_z('dossier ou activité')}, nous avons besoin de "
+               f"{_z('document ou information demandé')}.\n\n"
+               f"Ce document nous est nécessaire pour {_z('usage')}.\n\n"
+               "Nous vous remercions de nous le transmettre dans le délai indiqué.")},
+    {"id": "DEF-MAD-AGENT", "type": "MAD", "nom": "Mise à disposition d'un agent",
+     "objet": f"Mise à disposition de {_z('nom de l’agent')}",
+     "corps": (f"{_z('nom, fonction et service d’origine de l’agent')} est mis(e) à disposition de "
+               f"{_z('direction ou service d’accueil')} à compter du {_z('date de début')}, pour "
+               f"une durée de {_z('durée')}.\n\n"
+               f"Pendant cette période, l'agent exerce les missions suivantes : {_z('missions')}.\n\n"
+               f"Il ou elle reste rattaché(e) administrativement à {_z('service d’origine')}, qui "
+               "conserve la gestion de sa paie et de ses congés. Le service d'accueil fixe son "
+               "emploi du temps et en rend compte.")},
+    {"id": "DEF-MAD-MATERIEL", "type": "MAD", "nom": "Mise à disposition de matériel",
+     "objet": f"Mise à disposition de {_z('matériel')}",
+     "corps": (f"Le matériel suivant est mis à la disposition de {_z('bénéficiaire')} à compter "
+               f"du {_z('date')} :\n"
+               f"- {_z('désignation et numéro de série')} ;\n"
+               f"- {_z('désignation et numéro de série')}.\n\n"
+               "Le bénéficiaire en assure la garde et le bon usage. Toute perte, panne ou "
+               f"détérioration est signalée sans délai à {_z('service')}.\n\n"
+               f"Le matériel est restitué {_z('date ou condition de restitution')}.")},
+]
+
+
+def _banque():
+    """{"vus": [ids par défaut déjà proposés], "modeles": {id: modèle}}."""
+    with C._verrou:
+        b = C._lire(F_MODELES, None)
+        if not isinstance(b, dict) or "modeles" not in b:
+            b = {"vus": [], "modeles": {}}
+        nouveaux = [m for m in MODELES_DEFAUT if m["id"] not in b["vus"]]
+        if nouveaux:
+            for m in nouveaux:
+                b["modeles"].setdefault(m["id"], {
+                    "id": m["id"], "nom": m["nom"], "type": m["type"],
+                    "objet": m["objet"], "corps": m["corps"],
+                    "importante": m.get("importante", False),
+                    "destinataires": {"tous": m.get("tous", False), "services": [], "personnes": []},
+                    "copies": "", "delai_h": DELAI_DEMANDE_H, "actif": True,
+                    "origine": "Modèle fourni avec la GED", "utilisations": 0,
+                    "cree_le": C._maintenant(), "cree_par": "GED", "maj_le": C._maintenant()})
+                b["vus"].append(m["id"])
+            C._ecrire(F_MODELES, b)
+        return b
+
+
+def modeles_note(actifs_seulement=True, type_=None):
+    liste = list(_banque()["modeles"].values())
+    if actifs_seulement:
+        liste = [m for m in liste if m.get("actif", True)]
+    if type_:
+        liste = [m for m in liste if m.get("type") == type_]
+    ordre = list(TYPES_NOTE)
+    return sorted(liste, key=lambda m: (ordre.index(m["type"]) if m.get("type") in ordre else 9,
+                                        -int(m.get("utilisations", 0)), m.get("nom", "").lower()))
+
+
+def modele_note(mid):
+    return _banque()["modeles"].get(mid or "")
+
+
+def _sauver_modele(m):
+    with C._verrou:
+        b = _banque()
+        m["maj_le"] = C._maintenant()
+        b["modeles"][m["id"]] = m
+        C._ecrire(F_MODELES, b)
+
+
+def modele_depuis_note(n, nom):
+    m = {"id": C._id_court("MOD"), "nom": (nom or n.get("objet") or "Modèle")[:120],
+         "type": n.get("type", "NS"), "objet": n.get("objet", ""), "corps": n.get("corps", ""),
+         "importante": bool(n.get("importante")),
+         "destinataires": {"tous": bool((n.get("destinataires") or {}).get("tous")),
+                           "services": list((n.get("destinataires") or {}).get("services", [])),
+                           "personnes": []},
+         "copies": n.get("copies", ""), "delai_h": n.get("delai_h") or DELAI_DEMANDE_H,
+         "actif": True, "utilisations": 0,
+         "origine": f"Enregistré depuis la note {n.get('reference') or n.get('id')}",
+         "cree_le": C._maintenant(), "cree_par": C.utilisateur_courant()}
+    _sauver_modele(m)
+    return m
+
+
+def appliquer_modele(n, m):
+    """Pré-remplit une note neuve avec un modèle (sans toucher à l'émetteur)."""
+    n.update({"type": m.get("type", n.get("type", "NS")), "objet": m.get("objet", ""),
+              "corps": m.get("corps", ""), "importante": bool(m.get("importante")),
+              "copies": m.get("copies", ""), "delai_h": m.get("delai_h") or DELAI_DEMANDE_H,
+              "destinataires": dict(m.get("destinataires") or {}), "modele_id": m["id"],
+              "modele_nom": m.get("nom", "")})
+    return n
+
+
+def _compter_utilisation(mid):
+    with C._verrou:
+        b = _banque()
+        m = b["modeles"].get(mid)
+        if m:
+            m["utilisations"] = int(m.get("utilisations", 0)) + 1
+            C._ecrire(F_MODELES, b)
+
+
+# ---------------------------------------------------------------------------
 # Droits
 # ---------------------------------------------------------------------------
 def _email():
@@ -177,6 +408,16 @@ def etape_courante(n):
     i = n.get("etape", 0)
     etapes = n.get("etapes", [])
     return etapes[i] if 0 <= i < len(etapes) else None
+
+
+def _visible(n):
+    """Ses propres notes, celles de son circuit, et toutes les notes diffusées
+    non confidentielles (elles ont été envoyées au personnel)."""
+    codes = codes_utilisateur()
+    if C.est_responsable_ged() or n.get("emetteur") in codes \
+            or any(e.get("code") in codes for e in n.get("etapes", [])):
+        return True
+    return n.get("statut") in ("diffuse", "traitee") and not n.get("confidentielle")
 
 
 def peut_decider(n):
@@ -684,6 +925,11 @@ def verifier(n):
         erreurs.append("L'objet est obligatoire.")
     if len((n.get("corps") or "").strip()) < 20:
         erreurs.append("Le texte de la note est trop court.")
+    zones = C.zones_a_completer(n.get("objet"), n.get("corps"))
+    if zones:
+        liste = " ; ".join(f"« {z} »" for z in zones[:6])
+        suite = f" … (+{len(zones) - 6})" if len(zones) > 6 else ""
+        erreurs.append(f"Il reste {len(zones)} zone(s) à compléter : {liste}{suite}.")
     if n.get("type") == "DEM":
         if not n.get("traitants"):
             erreurs.append("Choisissez au moins une personne pour traiter la demande.")
@@ -721,6 +967,8 @@ def _champs_formulaire(f, n):
         },
         "traitants": f.getlist("traitants") if type_ == "DEM" else [],
         "delai_h": delai,
+        "confidentielle": f.get("confidentielle") == "on",
+        "points": f.get("points", n.get("points", "")).strip()[:3000],
     })
     return n
 
@@ -731,12 +979,161 @@ def creer(f):
          "cree_par": C.utilisateur_courant(), "cree_par_email": _email(),
          "historique": []}
     _champs_formulaire(f, n)
-    _historiser(n, "Créée", TYPES_NOTE[n["type"]]["nom"])
+    m = modele_note(f.get("modele_id"))
+    if m:
+        n["modele_id"], n["modele_nom"] = m["id"], m.get("nom", "")
+        _compter_utilisation(m["id"])
+    _historiser(n, "Créée", TYPES_NOTE[n["type"]]["nom"]
+                + (f" — modèle « {m.get('nom')} »" if m else ""))
     with C._verrou:
         toutes = notes()
         toutes[nid] = n
         _sauver(toutes)
     return n
+
+
+# ---------------------------------------------------------------------------
+# Assistance IA (même fournisseur, même clé et mêmes réglages que le courrier)
+# ---------------------------------------------------------------------------
+_SYSTEME_NOTE = """Tu rédiges pour Huri Money SA (WAKATI Mobile Money, Union des Comores) le TEXTE d'un courrier interne en français : note de service, circulaire, demande interne ou mise à disposition. L'application ajoute elle-même l'en-tête, le titre, le numéro, les destinataires, l'objet, la date et la signature.
+
+FORME :
+- Ton administratif interne, direct et neutre. Une formule d'usage brève est admise en ouverture (« Il est porté à la connaissance de… »), une seule fois.
+- Paragraphes courts : une idée par paragraphe, 2 à 3 phrases au plus, séparés par une ligne vide.
+- Phrases courtes (25 mots au plus), à la voix active.
+- Énumérations : une ligne par élément commençant par « - », terminée par « ; », la dernière par « . », précédée d'une phrase d'introduction.
+- Ordre : d'abord la décision, l'information ou la demande ; ensuite les modalités (qui, quand, comment) ; enfin l'interlocuteur ou la suite attendue si elle est connue.
+
+SELON LE TYPE :
+- Note de service : une instruction ou une décision applicable, avec sa date d'effet et les personnes concernées.
+- Circulaire : une information ou une procédure générale, ses étapes et où trouver le détail.
+- Demande interne : ce qui est demandé, pourquoi, et ce qui est attendu du service traitant ; ton courtois.
+- Mise à disposition : ce qui est mis à disposition (agent ou matériel), au profit de qui, pour quelle durée et à quelles conditions.
+
+RÈGLES ABSOLUES :
+- Écris uniquement le texte : pas de titre, pas de « Objet : », pas de destinataires, pas de date, pas de signature, pas de formule de politesse finale.
+- N'invente JAMAIS une date, un horaire, un montant, un nom, une référence ou un engagement. Toute information nécessaire mais absente s'écrit exactement [à compléter : description courte].
+- Conserve tels quels les repères entre crochets comme [courriel 1] ou [téléphone 2].
+- WAKATI est un service de paiement mobile : n'écris jamais « banque » pour le désigner.
+- Texte brut uniquement : pas de Markdown, pas de gras, pas de titres."""
+
+_CONSIGNE_REFORMULER = """Corrige et améliore le texte ci-dessous : orthographe, grammaire, ponctuation, clarté, paragraphes courts.
+- Garde exactement le même sens et le même niveau d'engagement.
+- N'ajoute AUCUNE information. Ne supprime aucune information.
+- Conserve à l'identique chaque date, chiffre, nom, et chaque zone [à compléter : …] ou repère entre crochets.
+Rends uniquement le texte corrigé."""
+
+
+def ia_autorisee_note(confidentielle=False):
+    """(autorisée, raison, modèle). Le refus est toujours expliqué."""
+    ia = C.parametres().get("ia", {})
+    if not ia.get("actif"):
+        return False, "Assistance IA désactivée dans les Paramètres du courrier.", ""
+    if not C._cle_ia():
+        return False, "Aucune clé d'API configurée (Paramètres du courrier).", ""
+    if not ia.get("modele"):
+        return False, "Aucun modèle d'IA renseigné dans les Paramètres.", ""
+    if confidentielle:
+        return False, "Note marquée confidentielle : l'IA est désactivée pour cette note.", ""
+    return True, "", ia.get("modele", "")
+
+
+def _masquer(texte, table):
+    """Remplace courriels, comptes et téléphones par des repères numérotés
+    ([courriel 1]…), restaurés dans la réponse : rien ne sort, rien ne se perd."""
+    def remplacer(lib):
+        def f(m):
+            for k, v in table.items():
+                if v == m.group(0):
+                    return k
+            cle = f"[{lib} {sum(1 for k in table if k.startswith('[' + lib)) + 1}]"
+            table[cle] = m.group(0)
+            return cle
+        return f
+    for motif, rempl in C._MASQUES:
+        texte = motif.sub(remplacer(rempl.strip("[]")), texte or "")
+    return texte
+
+
+def _restaurer(texte, table):
+    for cle, val in table.items():
+        texte = texte.replace(cle, val)
+    return texte
+
+
+_LIGNES_PARASITES = re.compile(
+    r"^[ \t]*(?:(?:note de service|circulaire|demande interne|mise à disposition)[ \t.:]*"
+    r"|(?:objet|destinataires?|à l'attention de|copie|ampliation)[ \t]*:[^\n]{0,160}"
+    r"|n°[ \t]*\S+[^\n]{0,60}|moroni,? le[^\n]{0,60})$", re.I | re.M)
+
+
+def _nettoyer_note(texte):
+    texte = _LIGNES_PARASITES.sub("", texte or "")
+    return C._nettoyer_sortie(texte, {})
+
+
+def _alertes_note(sortie, sources):
+    src = C._normaliser(" ".join(s or "" for s in sources))
+    alertes = []
+    for nombre in sorted(set(re.findall(r"\d[\d\s.,h:]*\d|\d", sortie))):
+        if C._normaliser(nombre) not in src:
+            alertes.append(f"« {nombre.strip()} » n'apparaît ni dans vos points clés ni dans "
+                           "le texte de départ : à vérifier.")
+    for mois in C.MOIS:
+        if re.search(rf"\b{mois}\b", sortie, re.I) and C._normaliser(mois) not in src:
+            alertes.append(f"Date en « {mois} » absente de vos points clés : à vérifier.")
+    return alertes[:8]
+
+
+def assistance_ia(mode, donnees):
+    """mode : « rediger » (depuis les points clés, en adaptant le texte
+    existant s'il y en a un) ou « reformuler » (corrige le texte existant).
+    Retourne (ok, texte_ou_erreur, alertes)."""
+    ok, raison, _ = ia_autorisee_note(donnees.get("confidentielle"))
+    if not ok:
+        return False, raison, []
+    ia = C.parametres()["ia"]
+    t = TYPES_NOTE.get(donnees.get("type"), TYPES_NOTE["NS"])
+    points = (donnees.get("points") or "").strip()
+    corps = (donnees.get("corps") or "").strip()
+    objet = (donnees.get("objet") or "").strip()
+    table = {}
+    if ia.get("anonymiser", True):
+        points_e, corps_e, objet_e = (_masquer(points, table), _masquer(corps, table),
+                                      _masquer(objet, table))
+    else:
+        points_e, corps_e, objet_e = points, corps, objet
+
+    if mode == "reformuler":
+        if len(corps) < 20:
+            return False, "Il n'y a pas encore de texte à corriger.", []
+        messages = [{"role": "system", "content": _SYSTEME_NOTE},
+                    {"role": "user", "content": f"{_CONSIGNE_REFORMULER}\n\nType : {t['nom']}\n"
+                                                f"Objet : {objet_e or 'non précisé'}\n\n"
+                                                f"Texte :\n{corps_e[:7000]}"}]
+    else:
+        if not points and len(corps) < 20:
+            return False, ("Indiquez d'abord les points clés : ce que la note doit dire, "
+                           "à qui, à partir de quand."), []
+        depart = (f"Texte de départ (modèle ou brouillon) à adapter. Remplace les zones "
+                  f"[à compléter : …] par les informations des points clés quand elles y "
+                  f"figurent ; laisse les autres zones telles quelles :\n{corps_e[:6000]}"
+                  if corps else "Pas de texte de départ : rédige le texte complet.")
+        messages = [{"role": "system", "content": _SYSTEME_NOTE},
+                    {"role": "user", "content": (
+                        f"Type : {t['nom']}\n"
+                        f"Direction émettrice : {direction(donnees.get('emetteur', '')).get('fonction', '')}\n"
+                        f"Destinataires : {donnees.get('destinataires_lib') or 'non précisés'}\n"
+                        f"Objet : {objet_e or 'non précisé'}\n\n"
+                        f"Points clés donnés par le rédacteur :\n{points_e or '(aucun)'}\n\n"
+                        f"{depart}\n\nRédige le texte de la note.")}]
+    ok, texte = C.appeler_ia(messages, ia)
+    if not ok:
+        return False, texte, []
+    sortie = _restaurer(_nettoyer_note(texte), table)
+    if not sortie.strip():
+        return False, "L'IA n'a rien proposé. Réessayez en précisant les points clés.", []
+    return True, sortie, _alertes_note(sortie, [points, corps, objet])
 
 
 # ---------------------------------------------------------------------------
@@ -768,6 +1165,7 @@ def _affichee(n):
         "maj_affiche": C._date_heure(n.get("maj_le")),
         "echeance_affiche": (f"{C.date_courte(n['echeance'][:10])} {n['echeance'][11:16]}"
                              if n.get("echeance") else ""),
+        "nb_a_completer": len(C.zones_a_completer(n.get("objet"), n.get("corps"))),
     }
 
 
@@ -786,8 +1184,10 @@ def compteurs():
 # Écrans GED
 # ---------------------------------------------------------------------------
 def _contexte():
+    ia_ok, ia_raison, ia_modele = ia_autorisee_note(False)
     return {"types_note": TYPES_NOTE, "statuts_note": STATUTS, "roles": ROLES,
             "directions": directions(), "personnel": personnel(actifs_seulement=True),
+            "ia_ok": ia_ok, "ia_raison": ia_raison, "ia_modele": ia_modele,
             **C._contexte_commun()}
 
 
@@ -803,9 +1203,29 @@ def liste():
                 if n.get("statut") in ("brouillon", "retourne", "en_circuit")
                 and n not in a_valider]
     diffusees = [_affichee(n) for n in visibles if n.get("statut") in ("diffuse", "traitee")][:40]
+
+    # Recherche : toutes les notes visibles, y compris celles diffusées par
+    # les autres directions (réutilisation), hors abandonnées.
+    q = (request.args.get("q") or "").strip()
+    type_f = request.args.get("type", "")
+    resultats = None
+    if q or type_f in TYPES_NOTE:
+        mots = C._normaliser(q).split()
+
+        def correspond(n):
+            if type_f in TYPES_NOTE and n.get("type") != type_f:
+                return False
+            texte = C._normaliser(" ".join([
+                n.get("objet", ""), n.get("corps", ""), n.get("reference", ""),
+                direction(n.get("emetteur", "")).get("fonction", ""),
+                TYPES_NOTE.get(n.get("type"), {}).get("nom", "")]))
+            return all(m in texte for m in mots)
+        resultats = [_affichee(n) for n in toutes
+                     if n.get("statut") != "abandonne" and _visible(n) and correspond(n)][:100]
     return render_template("notes.html", page="notes", a_valider=a_valider,
                            en_cours=[x for x in en_cours if x["id"] not in {a["id"] for a in a_valider}],
-                           diffusees=diffusees, **_contexte())
+                           diffusees=diffusees, resultats=resultats, q=q, type_f=type_f,
+                           **_contexte())
 
 
 @bp_notes.route("/nouvelle", methods=["GET", "POST"])
@@ -825,9 +1245,14 @@ def nouvelle():
     n = {"type": request.args.get("type", "NS"), "emetteur": defaut,
          "service": SERVICE_PAR_DIRECTION.get(defaut, "DGA"), "destinataires": {},
          "traitants": [], "delai_h": DELAI_DEMANDE_H, "statut": "brouillon"}
+    if n["type"] not in TYPES_NOTE:
+        n["type"] = "NS"
+    m = modele_note(request.args.get("modele"))
+    if m and m.get("actif", True):
+        appliquer_modele(n, m)
     return render_template("note_edition.html", page="notes", n=_affichee(n), nouvelle=True,
                            modifiable=True, redigeables=directions_redigeables(),
-                           circuit=apercu_circuit(n), **_contexte())
+                           circuit=apercu_circuit(n), modeles=modeles_note(), **_contexte())
 
 
 @bp_notes.route("/<nid>", methods=["GET", "POST"])
@@ -862,6 +1287,7 @@ def edition(nid):
         return redirect(url_for("notes.edition", nid=nid))
     return render_template("note_edition.html", page="notes", n=_affichee(n), nouvelle=False,
                            modifiable=peut_modifier(n), decision=peut_decider(n),
+                           peut_modele=C.est_responsable_ged() or n.get("emetteur") in codes_utilisateur(),
                            redigeables=directions_redigeables() or [direction(n["emetteur"])],
                            circuit=(n.get("etapes") if n.get("statut") not in ("brouillon", "retourne")
                                     else apercu_circuit(n)),
@@ -936,6 +1362,141 @@ def abandonner(nid):
         _sauver(toutes)
     flash("Note abandonnée.", "success")
     return redirect(url_for("notes.liste"))
+
+
+# --- Banque de modèles ---------------------------------------------------------
+@bp_notes.route("/modeles", methods=["GET", "POST"])
+@_reserve
+def ecran_modeles():
+    if request.method == "POST":
+        if not C.est_responsable_ged():
+            flash("Seule la responsable GED tient la banque de modèles.", "error")
+            return redirect(url_for("notes.ecran_modeles"))
+        f = request.form
+        mid = f.get("id") or C._id_court("MOD")
+        m = modele_note(mid) or {"id": mid, "utilisations": 0, "cree_le": C._maintenant(),
+                                 "cree_par": C.utilisateur_courant(), "origine": "Saisi dans la banque"}
+        type_ = f.get("type") if f.get("type") in TYPES_NOTE else "NS"
+        try:
+            delai = max(1, min(240, int(f.get("delai_h") or DELAI_DEMANDE_H)))
+        except ValueError:
+            delai = DELAI_DEMANDE_H
+        m.update({"nom": f.get("nom", "").strip()[:120], "type": type_,
+                  "objet": f.get("objet", "").strip()[:200],
+                  "corps": f.get("corps", "").replace("\r\n", "\n").strip(),
+                  "importante": f.get("importante") == "on",
+                  "destinataires": {"tous": f.get("tous") == "on",
+                                    "services": [s for s in f.getlist("services") if s in _services()],
+                                    "personnes": []},
+                  "copies": f.get("copies", "").strip(), "delai_h": delai,
+                  "actif": f.get("actif") == "on"})
+        if not m["nom"] or len(m["corps"]) < 20:
+            flash("Le nom et un texte d'au moins 20 caractères sont obligatoires.", "error")
+            return redirect(url_for("notes.ecran_modeles", id=f.get("id") or ""))
+        _sauver_modele(m)
+        flash(f"Modèle « {m['nom']} » enregistré.", "success")
+        return redirect(url_for("notes.ecran_modeles"))
+    edite = modele_note(request.args.get("id"))
+    if request.args.get("nouveau"):
+        edite = {"id": "", "type": request.args.get("type", "NS"), "actif": True,
+                 "destinataires": {}, "delai_h": DELAI_DEMANDE_H}
+    return render_template("notes_modeles.html", page="notes_modeles",
+                           tout=modeles_note(actifs_seulement=False), edite=edite, **_contexte())
+
+
+@bp_notes.route("/modeles/<mid>/supprimer", methods=["POST"])
+@_reserve
+def supprimer_modele(mid):
+    if not C.est_responsable_ged():
+        abort(403)
+    with C._verrou:
+        b = _banque()
+        m = b["modeles"].pop(mid, None)
+        C._ecrire(F_MODELES, b)
+    flash(f"Modèle « {(m or {}).get('nom', mid)} » supprimé." if m else "Modèle introuvable.",
+          "success" if m else "error")
+    return redirect(url_for("notes.ecran_modeles"))
+
+
+@bp_notes.route("/<nid>/modele", methods=["POST"])
+@_reserve
+def enregistrer_modele(nid):
+    n = note(nid)
+    if not n or not _visible(n):
+        abort(404)
+    if not (C.est_responsable_ged() or n.get("emetteur") in codes_utilisateur()):
+        flash("Seuls la direction émettrice et la responsable GED peuvent en faire un modèle.", "error")
+        return redirect(url_for("notes.edition", nid=nid))
+    m = modele_depuis_note(n, request.form.get("nom", ""))
+    flash(f"Modèle « {m['nom']} » ajouté à la banque. Remplacez-y les éléments propres à cette "
+          "note (dates, noms…) par des zones [à compléter : …].", "success")
+    if C.est_responsable_ged():
+        return redirect(url_for("notes.ecran_modeles", id=m["id"]))
+    return redirect(url_for("notes.edition", nid=nid))
+
+
+# --- Réutilisation ------------------------------------------------------------
+@bp_notes.route("/<nid>/dupliquer", methods=["POST"])
+@_reserve
+def dupliquer(nid):
+    src = note(nid)
+    if not src or not _visible(src):
+        abort(404)
+    em = src.get("emetteur") if peut_rediger_pour(src.get("emetteur")) else \
+        (directions_redigeables() or [{"code": src.get("emetteur")}])[0]["code"]
+    n = {"id": C._id_court("NOTE"), "statut": "brouillon", "cree_le": C._maintenant(),
+         "cree_par": C.utilisateur_courant(), "cree_par_email": _email(), "historique": [],
+         "type": src.get("type", "NS"), "emetteur": em,
+         "service": src.get("service") if em == src.get("emetteur")
+         else SERVICE_PAR_DIRECTION.get(em, "DGA"),
+         "objet": src.get("objet", ""), "corps": src.get("corps", ""),
+         "importante": bool(src.get("importante")), "copies": src.get("copies", ""),
+         "destinataires": dict(src.get("destinataires") or {}),
+         "traitants": list(src.get("traitants") or []),
+         "delai_h": src.get("delai_h") or DELAI_DEMANDE_H,
+         "confidentielle": bool(src.get("confidentielle")), "duplique_de": nid}
+    _historiser(n, "Créée par duplication", src.get("reference") or src.get("objet", ""))
+    with C._verrou:
+        toutes = notes()
+        toutes[n["id"]] = n
+        _sauver(toutes)
+    flash("Copie créée en brouillon : adaptez-la, puis soumettez-la.", "success")
+    return redirect(url_for("notes.edition", nid=n["id"]))
+
+
+# --- Assistance IA ---------------------------------------------------------------
+@bp_notes.route("/ia", methods=["POST"])
+@_reserve
+def ia():
+    f = request.form
+    mode = f.get("mode", "rediger")
+    nid = f.get("nid", "")
+    n = note(nid) if nid else None
+    if n and not peut_modifier(n):
+        return {"ok": False, "erreur": "Cette note n'est plus modifiable."}, 400
+    if not peut_rediger_pour(f.get("emetteur", "")):
+        return {"ok": False, "erreur": "Vous ne pouvez pas rédiger au nom de cette direction."}, 403
+    donnees = {"type": f.get("type"), "emetteur": f.get("emetteur", ""),
+               "objet": f.get("objet", ""), "corps": f.get("corps", ""),
+               "points": f.get("points", ""), "destinataires_lib": f.get("destinataires_lib", ""),
+               "confidentielle": f.get("confidentielle") == "on"
+               or bool((n or {}).get("confidentielle"))}
+    ok, texte, alertes = assistance_ia("reformuler" if mode == "reformuler" else "rediger", donnees)
+    if not ok:
+        return {"ok": False, "erreur": texte}
+    if n:
+        ia_cfg = C.parametres().get("ia", {})
+        with C._verrou:
+            toutes = notes()
+            cible = toutes.get(nid)
+            if cible:
+                cible["ia"] = {"utilisee": True, "le": C._maintenant(),
+                               "modele": ia_cfg.get("modele"), "fournisseur": ia_cfg.get("fournisseur")}
+                _historiser(cible, "Texte corrigé par l'IA" if mode == "reformuler"
+                            else "Texte proposé par l'IA",
+                            f"{ia_cfg.get('fournisseur')} / {ia_cfg.get('modele')}")
+                _sauver(toutes)
+    return {"ok": True, "texte": texte, "alertes": alertes}
 
 
 # --- Personnel (annuaire interne) ------------------------------------------
@@ -1098,4 +1659,5 @@ def init_notes(app, protection=None, archiver_note=None, dernier_numero=None):
                 app.view_functions[nom] = protection(vue)
     DOSSIER.mkdir(parents=True, exist_ok=True)
     print(f"[NOTES] Module actif — {len(notes())} note(s), "
-          f"{len(personnel(actifs_seulement=True))} personne(s) dans l'annuaire interne")
+          f"{len(personnel(actifs_seulement=True))} personne(s) dans l'annuaire interne, "
+          f"{len(modeles_note())} modèle(s)")

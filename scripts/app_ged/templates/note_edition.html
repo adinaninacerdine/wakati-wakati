@@ -42,6 +42,30 @@
       {% if n.lien_archive %}Archivée : <a href="{{ n.lien_archive }}" target="_blank" rel="noopener">{{ n.nom_archive }}</a>.{% endif %}</div>
     {% endif %}
 
+    {% if nouvelle and modeles %}
+    <form method="GET" action="{{ url_for('notes.nouvelle') }}" class="bloc barre-modele" id="form_modele">
+      <div class="corps">
+        <label for="choix_modele"><strong>Partir d'un modèle</strong></label>
+        <select id="choix_modele" name="modele">
+          <option value="">— Note vierge —</option>
+          {% for code, t in types_note.items() %}
+          <optgroup label="{{ t.nom }}">
+            {% for m in modeles if m.type == code %}
+            <option value="{{ m.id }}" {% if n.modele_id == m.id %}selected{% endif %}>{{ m.nom }}{% if m.utilisations %} ({{ m.utilisations }}×){% endif %}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+        <button type="submit" class="mineur">Utiliser</button>
+        <a class="lien-action" href="{{ url_for('notes.ecran_modeles') }}">Banque de modèles</a>
+      </div>
+    </form>
+    {% endif %}
+    {% if n.modele_id and n.nb_a_completer %}
+    <div class="encart">Modèle « {{ n.modele_nom }} » : remplacez les {{ n.nb_a_completer }} zone(s) <code>[à compléter : …]</code>
+      — à la main ou avec l'assistance IA à partir de vos points clés.</div>
+    {% endif %}
+
     <div class="grille-edition">
 
       <!-- COLONNE GAUCHE -->
@@ -51,6 +75,7 @@
             <h2>{% if nouvelle %}Rédaction{% else %}{{ n.objet or 'Rédaction' }}{% endif %}</h2>
             <div class="corps">
               <fieldset {% if not modifiable %}disabled{% endif %} style="border:0;padding:0;margin:0;">
+              {% if nouvelle and n.modele_id %}<input type="hidden" name="modele_id" value="{{ n.modele_id }}">{% endif %}
 
               <div class="champ">
                 <label>Type</label>
@@ -123,10 +148,14 @@
               <div class="champ"><label for="n_corps">Texte</label>
                 <textarea id="n_corps" name="corps" class="corps-lettre" required
                           placeholder="Un paragraphe par bloc, séparés par une ligne vide.">{{ n.corps or '' }}</textarea>
-                <div class="aide">L'en-tête, le titre, le numéro, la date et la signature sont ajoutés par la GED.</div></div>
+                <div class="aide">L'en-tête, le titre, le numéro, la date et la signature sont ajoutés par la GED.
+                  <span id="compte_zones" class="zones-restantes"></span></div></div>
 
               <div class="champ"><label for="n_copies">Ampliation (séparées par ;)</label>
                 <input type="text" id="n_copies" name="copies" value="{{ n.copies or '' }}" placeholder="Archives ; Ressources Humaines"></div>
+
+              <label class="case"><input type="checkbox" name="confidentielle" id="n_confidentielle" {% if n.confidentielle %}checked{% endif %}>
+                Note confidentielle : pas d'assistance IA, et absente de la recherche des autres directions</label>
 
               </fieldset>
 
@@ -153,6 +182,30 @@
 
       <!-- COLONNE DROITE -->
       <div>
+        {% if modifiable %}
+        <section class="bloc">
+          <h2>Assistance IA</h2>
+          <div class="corps">
+            {% if ia_ok %}
+            <div class="champ"><label for="n_points">Points clés</label>
+              <textarea id="n_points" name="points" form="form_note" style="min-height:90px;"
+                        placeholder="Ce que la note doit dire : décision, personnes concernées, date d'effet, interlocuteur…">{{ n.points or '' }}</textarea>
+              <div class="aide">L'IA rédige le texte à partir de ces points{% if n.modele_id %} en complétant le modèle{% endif %}.
+                Elle n'invente ni date, ni nom, ni montant : ce qui manque reste en <code>[à compléter]</code>.
+                Courriels et téléphones ne quittent pas la GED. Modèle : {{ ia_modele }}.</div></div>
+            <div class="actions" style="margin-top:6px;">
+              <button type="button" id="ia_rediger" data-mode="rediger">Rédiger le texte</button>
+              <button type="button" id="ia_corriger" data-mode="reformuler" class="mineur">Corriger et reformuler</button>
+              <button type="button" id="ia_annuler" class="discret" hidden>Annuler la proposition</button>
+            </div>
+            <div id="ia_etat" class="aide" role="status"></div>
+            <div id="ia_alertes"></div>
+            {% else %}
+            <p class="vide" style="margin:0;">{{ ia_raison }}</p>
+            {% endif %}
+          </div>
+        </section>
+        {% endif %}
         {% if decision %}
         {% set e = (n.etapes or [])[n.etape] %}
         <section class="bloc bloc-decision">
@@ -240,6 +293,25 @@
 
         {% if not nouvelle %}
         <section class="bloc">
+          <h2>Réutiliser</h2>
+          <div class="corps">
+            <form method="POST" action="{{ url_for('notes.dupliquer', nid=n.id) }}" style="margin-bottom:10px;">
+              <button type="submit" class="mineur">Dupliquer en nouveau brouillon</button>
+              <span class="aide">Même texte et mêmes destinataires, à adapter.</span>
+            </form>
+            {% if peut_modele %}
+            <form method="POST" action="{{ url_for('notes.enregistrer_modele', nid=n.id) }}" class="rang" style="align-items:flex-end;">
+              <div class="champ" style="margin:0;"><label for="m_nom">Nom du modèle</label>
+                <input type="text" id="m_nom" name="nom" value="{{ n.objet }}" maxlength="120"></div>
+              <button type="submit" class="mineur">Enregistrer comme modèle</button>
+            </form>
+            {% endif %}
+            {% if n.modele_nom %}<p class="aide">Rédigée à partir du modèle « {{ n.modele_nom }} ».</p>{% endif %}
+            {% if n.ia and n.ia.utilisee %}<p class="aide">Assistance IA utilisée ({{ n.ia.modele }}).</p>{% endif %}
+          </div>
+        </section>
+
+        <section class="bloc">
           <h2>Historique</h2>
           <div class="corps">
             <ul class="historique">
@@ -273,6 +345,81 @@
   }
   form.addEventListener('change', maj);
   maj();
+
+  // Zones [à compléter : …] restantes
+  var corps = document.getElementById('n_corps');
+  var objet = document.getElementById('n_objet');
+  var compte = document.getElementById('compte_zones');
+  var MOTIF = /\[à compléter[^\]]*\]/gi;
+  function compterZones() {
+    var nb = ((objet.value + '\n' + corps.value).match(MOTIF) || []).length;
+    compte.textContent = nb ? (nb + ' zone' + (nb > 1 ? 's' : '') + ' à compléter avant la soumission.') : '';
+  }
+  corps.addEventListener('input', compterZones);
+  objet.addEventListener('input', compterZones);
+  compterZones();
+
+  // Assistance IA
+  var URL_IA = "{{ url_for('notes.ia') }}";
+  var NID = "{{ '' if nouvelle else n.id }}";
+  var precedent = null;
+  var confid = document.getElementById('n_confidentielle');
+  var boutons = [document.getElementById('ia_rediger'), document.getElementById('ia_corriger')].filter(Boolean);
+  var etat = document.getElementById('ia_etat');
+  var zoneAlertes = document.getElementById('ia_alertes');
+  var annuler = document.getElementById('ia_annuler');
+  function echapper(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  function majConfid() {
+    boutons.forEach(function (b) { b.disabled = confid.checked; });
+    if (etat && confid.checked) etat.textContent = 'Note confidentielle : assistance IA désactivée.';
+    else if (etat && etat.textContent.indexOf('confidentielle') >= 0) etat.textContent = '';
+  }
+  function libelleDestinataires() {
+    if (document.getElementById('n_tous').checked) return 'Tout le personnel';
+    var noms = [];
+    form.querySelectorAll('input[name="services"]:checked, input[name="personnes"]:checked, input[name="traitants"]:checked')
+      .forEach(function (c) { noms.push(c.parentElement.textContent.split('—')[0].trim()); });
+    return noms.join(', ');
+  }
+  boutons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var mode = b.getAttribute('data-mode');
+      var donnees = new FormData(form);
+      donnees.set('mode', mode);
+      donnees.set('nid', NID);
+      donnees.set('destinataires_lib', libelleDestinataires());
+      boutons.forEach(function (x) { x.disabled = true; });
+      etat.textContent = mode === 'reformuler' ? 'Correction en cours…' : 'Rédaction en cours… (jusqu’à une minute)';
+      zoneAlertes.innerHTML = '';
+      fetch(URL_IA, {method: 'POST', body: donnees, credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          majConfid(); boutons.forEach(function (x) { x.disabled = confid.checked; });
+          if (!d.ok) { etat.textContent = d.erreur; return; }
+          precedent = corps.value;
+          corps.value = d.texte;
+          annuler.hidden = false;
+          compterZones();
+          etat.textContent = (mode === 'reformuler' ? 'Texte corrigé.' : 'Texte proposé.')
+            + ' Relisez-le, puis enregistrez le brouillon.';
+          if (d.alertes && d.alertes.length) {
+            zoneAlertes.innerHTML = '<div class="encart alerte" style="margin-top:10px;"><strong>Points à vérifier :</strong><ul>'
+              + d.alertes.map(function (a) { return '<li>' + echapper(a) + '</li>'; }).join('') + '</ul></div>';
+          }
+        })
+        .catch(function () {
+          boutons.forEach(function (x) { x.disabled = confid.checked; });
+          etat.textContent = 'Échec de l’appel. Réessayez.';
+        });
+    });
+  });
+  if (annuler) annuler.addEventListener('click', function () {
+    if (precedent === null) return;
+    corps.value = precedent; precedent = null; annuler.hidden = true;
+    zoneAlertes.innerHTML = ''; etat.textContent = 'Proposition annulée : texte précédent rétabli.';
+    compterZones();
+  });
+  if (confid) { confid.addEventListener('change', majConfid); majConfid(); }
   document.querySelectorAll('.filtre-personnes').forEach(function (champ) {
     var liste = champ.parentElement.querySelector('.liste-personnes');
     champ.addEventListener('input', function () {
