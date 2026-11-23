@@ -82,6 +82,7 @@ _verrou = threading.RLock()
 SERVICES = {
     "FIN": "Finances", "RH": "Ressources Humaines", "DGA": "Direction / Admin",
     "JUR": "Juridique", "COM": "Commercial", "EXP": "Exploitation",
+    "DSI": "Systèmes d'information", "OPS": "Opérations",
 }
 TYPES = {
     "FAC": "Facture", "CNT": "Contrat", "NOT": "Note de service", "VIR": "Virement",

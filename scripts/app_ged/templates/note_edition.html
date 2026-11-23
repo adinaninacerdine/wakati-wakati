@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if nouvelle %}Nouvelle note interne{% else %}{{ n.objet or 'Note interne' }}{% endif %} — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>{% if nouvelle %}Nouvelle note interne{% else %}{{ n.type_nom }}{% if n.reference %} {{ n.reference }}{% endif %}{% endif %}</h1>
+    <div class="contexte">
+      {% if not nouvelle %}<span class="badge {% if n.statut == 'retourne' %}alerte{% elif n.statut in ['diffuse', 'traitee'] %}ok{% endif %}">{{ n.statut_lib }}</span>&nbsp;{% endif %}
+      <a class="lien-action" href="{{ url_for('notes.liste') }}">Toutes les notes</a>
+    </div>
+  </header>
+
+  <div class="contenu" style="max-width:1280px;">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if n.statut == 'retourne' and n.motif_retour %}
+    <div class="encart alerte"><strong>Retournée.</strong> {{ n.motif_retour }}<br>Corrigez puis soumettez à nouveau.</div>
+    {% elif n.statut == 'en_circuit' %}
+    <div class="encart">En attente : <strong>{{ n.etape_lib }}</strong>.</div>
+    {% elif n.statut == 'diffuse' and n.type == 'DEM' %}
+    <div class="encart {% if n.retard %}alerte{% else %}ok{% endif %}">Diffusée le {{ n.signe_le|date_courte }} —
+      réponse attendue avant le {{ n.echeance_affiche }}{% if n.retard %} : <strong>délai dépassé</strong>{% endif %}.</div>
+    {% elif n.statut in ['diffuse', 'traitee'] %}
+    <div class="encart ok">Signée le {{ n.signe_le|date_courte }} et diffusée —
+      {{ n.nb_lus }} / {{ n.nb_lectures }} confirmation{{ 's' if n.nb_lus > 1 }} de lecture.
+      {% if n.lien_archive %}Archivée : <a href="{{ n.lien_archive }}" target="_blank" rel="noopener">{{ n.nom_archive }}</a>.{% endif %}</div>
+    {% endif %}
+
+    <div class="grille-edition">
+
+      <!-- COLONNE GAUCHE -->
+      <div>
+        <form method="POST" action="{{ url_for('notes.nouvelle') if nouvelle else url_for('notes.edition', nid=n.id) }}" id="form_note">
+          <section class="bloc">
+            <h2>{% if nouvelle %}Rédaction{% else %}{{ n.objet or 'Rédaction' }}{% endif %}</h2>
+            <div class="corps">
+              <fieldset {% if not modifiable %}disabled{% endif %} style="border:0;padding:0;margin:0;">
+
+              <div class="champ">
+                <label>Type</label>
+                <div class="choix-type">
+                  {% for code, t in types_note.items() %}
+                  <label class="type-note"><input type="radio" name="type" value="{{ code }}" {% if n.type == code %}checked{% endif %}>
+                    <span><strong>{{ t.nom }}</strong></span></label>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="rang">
+                <div class="champ"><label for="n_emetteur">Direction émettrice</label>
+                  <select id="n_emetteur" name="emetteur">
+                    {% for d in redigeables %}<option value="{{ d.code }}" {% if n.emetteur == d.code %}selected{% endif %}>{{ d.fonction }}{% if d.nom %} — {{ d.nom }}{% endif %}</option>{% endfor %}
+                  </select></div>
+                <div class="champ"><label for="n_service">Classement (service GED)</label>
+                  <select id="n_service" name="service">
+                    {% for code, nom in services.items() %}<option value="{{ code }}" {% if n.service == code %}selected{% endif %}>{{ nom }}</option>{% endfor %}
+                  </select></div>
+              </div>
+
+              <label class="case" data-pour="NS" style="margin-bottom:14px;"><input type="checkbox" name="importante" {% if n.importante %}checked{% endif %}>
+                Note importante : signature du Directeur Général (sinon, signature du DAF)</label>
+
+              <div class="champ"><label for="n_objet">Objet</label>
+                <input type="text" id="n_objet" name="objet" value="{{ n.objet or '' }}" required maxlength="200"></div>
+
+              <div class="champ" data-pour="DEM">
+                <label>Personne(s) chargée(s) de traiter la demande</label>
+                <input type="text" class="filtre-personnes" placeholder="Filtrer par nom ou service…" aria-label="Filtrer">
+                <div class="liste-personnes">
+                  {% for p in personnel %}
+                  <label class="case personne" data-cherche="{{ (p.nom ~ ' ' ~ p.fonction ~ ' ' ~ services.get(p.service, p.service))|lower }}">
+                    <input type="checkbox" name="traitants" value="{{ p.id }}" {% if p.id in (n.traitants or []) %}checked{% endif %}>
+                    {{ p.nom }} <span class="aide" style="margin:0;">— {{ p.fonction }} · {{ services.get(p.service, p.service) }}{% if not p.email %} · sans e-mail{% endif %}</span></label>
+                  {% else %}
+                  <p class="vide">L'annuaire du personnel est vide : <a href="{{ url_for('notes.ecran_personnel') }}">le compléter</a>.</p>
+                  {% endfor %}
+                </div>
+                <div class="rang" style="margin-top:10px;">
+                  <div class="champ" style="flex:0 0 200px;"><label for="n_delai">Délai de réponse (heures)</label>
+                    <input type="number" id="n_delai" name="delai_h" min="1" max="240" value="{{ n.delai_h or 24 }}"></div>
+                </div>
+              </div>
+
+              <div class="champ">
+                <label><span data-pour="NS CIR MAD">Destinataires</span><span data-pour="DEM">Copie pour information (facultatif)</span></label>
+                <label class="case"><input type="checkbox" name="tous" id="n_tous" {% if n.destinataires.tous %}checked{% endif %}> Tout le personnel</label>
+                <div id="bloc_selection">
+                  <div class="services-cases">
+                    {% for code, nom in services.items() %}
+                    <label class="case"><input type="checkbox" name="services" value="{{ code }}" {% if code in (n.destinataires.services or []) %}checked{% endif %}> {{ nom }}</label>
+                    {% endfor %}
+                  </div>
+                  <details style="margin-top:6px;" {% if n.destinataires.personnes %}open{% endif %}>
+                    <summary>Personnes en particulier{% if n.destinataires.personnes %} ({{ n.destinataires.personnes|length }}){% endif %}</summary>
+                    <input type="text" class="filtre-personnes" placeholder="Filtrer par nom ou service…" aria-label="Filtrer" style="margin-top:8px;">
+                    <div class="liste-personnes">
+                      {% for p in personnel %}
+                      <label class="case personne" data-cherche="{{ (p.nom ~ ' ' ~ p.fonction ~ ' ' ~ services.get(p.service, p.service))|lower }}">
+                        <input type="checkbox" name="personnes" value="{{ p.id }}" {% if p.id in (n.destinataires.personnes or []) %}checked{% endif %}>
+                        {{ p.nom }} <span class="aide" style="margin:0;">— {{ p.fonction }} · {{ services.get(p.service, p.service) }}</span></label>
+                      {% endfor %}
+                    </div>
+                  </details>
+                </div>
+              </div>
+
+              <div class="champ"><label for="n_corps">Texte</label>
+                <textarea id="n_corps" name="corps" class="corps-lettre" required
+                          placeholder="Un paragraphe par bloc, séparés par une ligne vide.">{{ n.corps or '' }}</textarea>
+                <div class="aide">L'en-tête, le titre, le numéro, la date et la signature sont ajoutés par la GED.</div></div>
+
+              <div class="champ"><label for="n_copies">Ampliation (séparées par ;)</label>
+                <input type="text" id="n_copies" name="copies" value="{{ n.copies or '' }}" placeholder="Archives ; Ressources Humaines"></div>
+
+              </fieldset>
+
+              {% if modifiable %}
+              <div class="actions">
+                <button type="submit" name="action" value="enregistrer" class="mineur">Enregistrer le brouillon</button>
+                {% if not nouvelle %}
+                <button type="submit" name="action" value="soumettre"
+                        onclick="return confirm('{{ 'Signer et diffuser cette note ?' if not circuit else 'Soumettre au circuit de validation ?' }}');">
+                  {{ 'Signer et diffuser' if not circuit else ('Resoumettre' if n.statut == 'retourne' else 'Soumettre au circuit') }}</button>
+                {% endif %}
+              </div>
+              {% endif %}
+            </div>
+          </section>
+        </form>
+
+        {% if not nouvelle and modifiable %}
+        <form method="POST" action="{{ url_for('notes.abandonner', nid=n.id) }}" onsubmit="return confirm('Abandonner cette note ?');">
+          <button type="submit" class="discret">Abandonner cette note</button>
+        </form>
+        {% endif %}
+      </div>
+
+      <!-- COLONNE DROITE -->
+      <div>
+        {% if decision %}
+        {% set e = (n.etapes or [])[n.etape] %}
+        <section class="bloc bloc-decision">
+          <h2>{{ roles[e.role] }} attendu de votre part</h2>
+          <div class="corps">
+            <form method="POST" action="{{ url_for('notes.decision', nid=n.id) }}">
+              <div class="champ"><label for="d_obs">Observation</label>
+                <textarea id="d_obs" name="observation" style="min-height:70px;" placeholder="Obligatoire pour retourner la note"></textarea></div>
+              <div class="actions">
+                <button type="submit" name="decision" value="approuver"
+                        {% if e.role == 'signature' %}onclick="return confirm('Signer électroniquement : la note sera numérotée, archivée et diffusée. Confirmer ?');"{% endif %}>
+                  {{ 'Signer et diffuser' if e.role == 'signature' else ('Viser' if e.role == 'visa' else 'Valider') }}</button>
+                <button type="submit" name="decision" value="retourner" class="mineur">Retourner au rédacteur</button>
+              </div>
+            </form>
+          </div>
+        </section>
+        {% endif %}
+
+        <section class="bloc">
+          <h2>Circuit</h2>
+          <div class="corps">
+            {% if circuit %}
+            <ol class="circuit">
+              {% for e in circuit %}
+              <li class="{{ e.statut }}{% if n.statut == 'en_circuit' and loop.index0 == n.etape %} courante{% endif %}">
+                <strong>{{ roles[e.role] }}</strong> — {{ e.fonction }}{% if e.nom %} ({{ e.nom }}){% endif %}
+                {% if e.statut == 'fait' %}<div class="aide">fait le {{ e.le[:10]|date_courte }} {{ e.le[11:16] }}{% if e.observation %} — {{ e.observation }}{% endif %}</div>
+                {% elif e.statut == 'retour' %}<div class="aide">retournée le {{ e.le|date_courte }} — {{ e.observation }}</div>{% endif %}
+              </li>
+              {% endfor %}
+            </ol>
+            {% if n.statut in ['brouillon', 'retourne'] %}<p class="aide">Circuit prévu, recalculé à l'enregistrement selon le type, la direction et l'importance.</p>{% endif %}
+            {% else %}
+            <p class="vide" style="margin:0;">Aucune validation intermédiaire : la direction émettrice signe elle-même en soumettant.</p>
+            {% endif %}
+          </div>
+        </section>
+
+        {% if not nouvelle %}
+        <section class="bloc">
+          <h2><span>Aperçu</span>
+            <a class="lien-action" href="{{ url_for('notes.apercu', nid=n.id) }}" target="_blank" rel="noopener">Ouvrir le PDF</a></h2>
+          <iframe class="lecteur-apercu" title="Aperçu de la note" src="{{ url_for('notes.apercu', nid=n.id) }}"></iframe>
+        </section>
+        {% endif %}
+
+        {% if n.lectures %}
+        <section class="bloc">
+          <h2><span>{{ 'Traitement et diffusion' if n.type == 'DEM' else 'Diffusion' }}</span>
+            <span class="compte">{{ n.nb_lus }} / {{ n.nb_lectures }}</span></h2>
+          <div class="corps">
+            <div class="table-defilante">
+            <table class="table-registre" style="min-width:0;">
+              <thead><tr><th>Destinataire</th><th>Envoi</th><th>{{ 'Suivi' if n.type == 'DEM' else 'Lu le' }}</th></tr></thead>
+              <tbody>
+              {% for l in n.lectures %}
+                <tr>
+                  <td>{{ l.nom }}{% if l.traitant %} <span class="badge">traitant</span>{% endif %}<div class="aide" style="margin:0;">{{ services.get(l.service, l.service) }}</div></td>
+                  <td>{% if l.envoye_le %}{{ l.envoye_le|date_courte }}<div class="aide" style="margin:0;">{{ l.canaux }}</div>{% else %}<span class="aide">{{ l.canaux or 'en cours' }}</span>{% endif %}</td>
+                  <td>
+                    {% if l.traitant %}
+                      {% if l.traite_le %}<span class="badge ok">traité</span> {{ l.traite_le|date_courte }}<div class="aide" style="margin:0;">{{ l.reponse }}</div>
+                      {% elif l.pris_en_charge_le %}<span class="badge">pris en charge</span> {{ l.pris_en_charge_le|date_courte }}
+                      {% else %}<span class="badge alerte">en attente</span>{% endif %}
+                    {% elif l.lu_le %}<span class="badge ok">lu</span> {{ l.lu_le[:10]|date_courte }} {{ l.lu_le[11:16] }}
+                    {% else %}<span class="aide">non lu</span>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            </div>
+            <div class="actions">
+              {% if n.statut == 'diffuse' and n.nb_lus < n.nb_lectures %}
+              <form method="POST" action="{{ url_for('notes.relancer', nid=n.id) }}"><button type="submit" class="mineur">Relancer ceux qui n'ont pas confirmé</button></form>
+              {% endif %}
+              {% if not n.lien_archive %}
+              <form method="POST" action="{{ url_for('notes.rearchiver', nid=n.id) }}"><button type="submit" class="mineur">Archiver dans WorkDrive</button></form>
+              {% endif %}
+            </div>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if not nouvelle %}
+        <section class="bloc">
+          <h2>Historique</h2>
+          <div class="corps">
+            <ul class="historique">
+              {% for h in n.historique|reverse %}
+              <li><strong>{{ h.action }}</strong> — {{ h.le[:10]|date_courte }} {{ h.le[11:16] }} — {{ h.par }}{% if h.detail %}<br>{{ h.detail }}{% endif %}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </section>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('form_note');
+  function typeChoisi() { var r = form.querySelector('input[name="type"]:checked'); return r ? r.value : 'NS'; }
+  function maj() {
+    var t = typeChoisi();
+    document.querySelectorAll('[data-pour]').forEach(function (el) {
+      el.hidden = el.getAttribute('data-pour').split(' ').indexOf(t) < 0;
+    });
+    var tous = document.getElementById('n_tous');
+    document.getElementById('bloc_selection').hidden = tous.checked;
+  }
+  form.addEventListener('change', maj);
+  maj();
+  document.querySelectorAll('.filtre-personnes').forEach(function (champ) {
+    var liste = champ.parentElement.querySelector('.liste-personnes');
+    champ.addEventListener('input', function () {
+      var q = champ.value.trim().toLowerCase();
+      liste.querySelectorAll('.personne').forEach(function (l) {
+        l.hidden = q && l.getAttribute('data-cherche').indexOf(q) < 0;
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

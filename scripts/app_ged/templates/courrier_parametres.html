@@ -97,7 +97,8 @@
           <p class="aide" style="margin-top:0;">La fonction et le nom s'impriment sous la signature. L'adresse
             sert au routage : un signataire ne voit dans l'écran Visa que les courriers qui
             lui sont adressés (la Direction Générale voit tout). L'adresse doit aussi figurer
-            dans UTILISATEURS_AUTORISES (auth_config.py).</p>
+            dans UTILISATEURS_AUTORISES (auth_config.py). « Intérim par » : code du signataire
+            qui agit pour cette direction tant qu'elle n'a pas de titulaire (ex. DG pour DOP).</p>
           <input type="hidden" name="nb_signataires" value="{{ signataires|length }}">
           {% for s in signataires + [{'code': '', 'fonction': '', 'nom': '', 'email': ''}] %}
           <div class="rang">
@@ -109,6 +110,9 @@
               <input type="text" name="sig_{{ loop.index0 }}_nom" value="{{ s.nom }}"></div>
             <div class="champ"><label>Adresse</label>
               <input type="email" name="sig_{{ loop.index0 }}_email" value="{{ s.email }}"></div>
+            <div class="champ" style="flex:0 0 110px;min-width:110px;"><label>Intérim par</label>
+              <input type="text" name="sig_{{ loop.index0 }}_interim" value="{{ s.interim or '' }}"
+                     placeholder="code" title="Code du signataire qui assure l'intérim (ex. DG)"></div>
             <div class="champ"><label>Agenda Zoho (identifiant)</label>
               <input type="text" name="sig_{{ loop.index0 }}_agenda" value="{{ s.agenda or '' }}"
                      list="liste_agendas" placeholder="vide = invitation par e-mail" autocomplete="off"

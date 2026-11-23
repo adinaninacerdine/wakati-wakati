@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Annuaire du personnel — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Annuaire du personnel</h1>
+    <div class="contexte">Destinataires des notes internes · {{ tout|selectattr('actif')|list|length }} actif(s)</div>
+  </header>
+
+  <div class="contenu large">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if responsable %}
+    <div class="duo">
+      <section class="bloc">
+        <h2>{% if edite %}Modifier : {{ edite.nom }}{% else %}Ajouter une personne{% endif %}</h2>
+        <div class="corps">
+          {% set p = edite or {'actif': True} %}
+          <form method="POST" action="{{ url_for('notes.ecran_personnel') }}">
+            <input type="hidden" name="id" value="{{ p.id or '' }}">
+            <div class="champ"><label for="p_nom">Nom</label>
+              <input type="text" id="p_nom" name="nom" value="{{ p.nom or '' }}" required></div>
+            <div class="rang">
+              <div class="champ"><label for="p_fonction">Fonction</label>
+                <input type="text" id="p_fonction" name="fonction" value="{{ p.fonction or '' }}"></div>
+              <div class="champ"><label for="p_service">Service</label>
+                <select id="p_service" name="service">
+                  {% for code, nom in services.items() %}<option value="{{ code }}" {% if p.service == code %}selected{% endif %}>{{ nom }}</option>{% endfor %}
+                </select></div>
+            </div>
+            <div class="champ"><label for="p_email">E-mail professionnel (Cliq et e-mail)</label>
+              <input type="text" id="p_email" name="email" value="{{ p.email or '' }}" placeholder="prenom.nom@hurimoney.com"></div>
+            <label class="case"><input type="checkbox" name="actif" {% if p.actif %}checked{% endif %}> Actif (reçoit les notes)</label>
+            <div class="actions"><button type="submit">Enregistrer</button>
+              {% if edite %}<a class="lien-action" href="{{ url_for('notes.ecran_personnel') }}">Annuler</a>{% endif %}</div>
+          </form>
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Import rapide</h2>
+        <div class="corps">
+          <form method="POST" action="{{ url_for('notes.ecran_personnel') }}">
+            <input type="hidden" name="action" value="importer">
+            <div class="champ"><label for="p_lignes">Une personne par ligne : Nom ; Fonction ; Service ; E-mail</label>
+              <textarea id="p_lignes" name="lignes" style="min-height:150px;"
+                        placeholder="Amina SAID ; Assistante RH ; RH ; amina.said@hurimoney.com"></textarea>
+              <div class="aide">Codes service : {% for code, nom in services.items() %}{{ code }} ({{ nom }}){% if not loop.last %}, {% endif %}{% endfor %}.
+                Un copier-coller depuis un tableur fonctionne (tabulations acceptées). Les adresses déjà présentes sont ignorées.</div></div>
+            <button type="submit" class="mineur">Importer</button>
+          </form>
+        </div>
+      </section>
+    </div>
+    {% endif %}
+
+    <section class="bloc">
+      <h2>Personnel</h2>
+      <div class="corps">
+        {% if tout %}
+        <div class="table-defilante">
+        <table class="table-registre">
+          <thead><tr><th>Nom</th><th>Fonction</th><th>Service</th><th>E-mail</th><th></th></tr></thead>
+          <tbody>
+          {% for p in tout %}
+            <tr {% if not p.actif %}style="opacity:.55;"{% endif %}>
+              <td>{{ p.nom }}{% if not p.actif %} <span class="badge">inactif</span>{% endif %}</td>
+              <td>{{ p.fonction }}</td>
+              <td>{{ services.get(p.service, p.service) }}</td>
+              <td>{% if p.email %}{{ p.email }}{% else %}<span class="badge alerte">sans e-mail</span>{% endif %}</td>
+              <td>{% if responsable %}<a class="lien-action" href="{{ url_for('notes.ecran_personnel', id=p.id) }}">Modifier</a>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="vide">Annuaire vide. Importez la liste du personnel pour pouvoir diffuser des notes.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+</body>
+</html>

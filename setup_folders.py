@@ -31,7 +31,8 @@ MAP_FILE = ROOT_DIR / "folders_map.json"
 
 SERVICES = {
     "FIN": "Finances", "RH": "Ressources Humaines", "DGA": "Direction / Admin",
-    "JUR": "Juridique", "COM": "Commercial", "EXP": "Exploitation"
+    "JUR": "Juridique", "COM": "Commercial", "EXP": "Exploitation",
+    "DSI": "Systèmes d'information", "OPS": "Opérations"
 }
 TYPES = {
     "FAC": "Facture", "CNT": "Contrat", "NOT": "Note de service", "VIR": "Virement",
@@ -39,6 +40,7 @@ TYPES = {
     "ATT": "Attestation", "BOR": "Bordereau", "CENT": "Courrier Entrant",
     "CSOR": "Courrier Sortant", "PV": "Procès-verbal", "DOC": "Document divers",
     "MAN": "Mandat", "DEC": "Décision",
+    "CIR": "Circulaire", "MAD": "Mise à disposition",
 }
 
 

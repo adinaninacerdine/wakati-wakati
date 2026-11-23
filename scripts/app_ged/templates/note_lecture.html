@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#03224C">
+<title>{% if n %}{{ n.type_nom }} — {{ n.objet }}{% else %}Note interne{% endif %} — WAKATI</title>
+<style>
+  :root { --navy: #03224C; --rouge: #E60E06; --fond: #F2F5F9; --surface: #FFFFFF; --texte: #1B2733;
+          --doux: #5B6B7F; --bord: #C9D6E5; --vert: #1E7A4C; --vert-fond: #E8F5EE; --rouge-fond: #FDECEB; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--fond); color: var(--texte);
+    font-family: Calibri, "Segoe UI", Roboto, Arial, sans-serif; font-size: 16px; }
+  header { background: var(--navy); color: #fff; padding: 14px 16px; padding-top: calc(14px + env(safe-area-inset-top)); }
+  header .marque { letter-spacing: 6px; font-weight: 700; font-size: 15px; }
+  header .slogan { color: var(--rouge); font-size: 11px; letter-spacing: 3px; margin-top: 2px; }
+  header h1 { font-weight: 400; font-size: 20px; margin: 10px 0 0; }
+  main { padding: 16px; max-width: 720px; margin: 0 auto 40px; }
+  .carte { background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+  .titre-note { text-align: center; font-weight: 700; color: var(--navy); letter-spacing: 1px; font-size: 18px; }
+  .ref { text-align: center; color: var(--doux); font-size: 14px; margin-top: 2px; }
+  .meta { color: var(--doux); font-size: 14px; margin-top: 4px; }
+  .lignes { margin: 16px 0; font-size: 15px; line-height: 1.5; }
+  .lignes b { color: var(--navy); }
+  .texte p { line-height: 1.55; margin: 0 0 12px; text-align: justify; }
+  .signature { text-align: right; margin-top: 14px; font-size: 14px; }
+  .tampon { display: inline-block; border: 1.5px solid var(--navy); color: var(--navy); border-radius: 4px;
+    padding: 4px 10px; font-size: 12px; margin-top: 6px; }
+  .pdf { display: block; text-align: center; margin-top: 10px; color: var(--navy); font-weight: 700; }
+  .bouton { width: 100%; padding: 16px; border: 0; border-radius: 10px; font-size: 18px; font-weight: 700;
+    color: #fff; background: var(--navy); font-family: inherit; margin-top: 10px; }
+  .bouton.secondaire { background: #fff; color: var(--navy); border: 2px solid var(--navy); }
+  textarea { width: 100%; font-size: 16px; padding: 12px; border-radius: 8px; border: 1px solid var(--bord);
+    min-height: 110px; font-family: inherit; }
+  label { display: block; font-weight: 700; color: var(--navy); margin: 12px 0 6px; }
+  .message { padding: 12px 14px; border-radius: 8px; margin-bottom: 14px; background: #fff; border-left: 4px solid var(--navy); }
+  .etat { text-align: center; }
+  .etat.ok { background: var(--vert-fond); border-color: #A9D9BF; }
+  .etat .grand { font-size: 40px; line-height: 1; }
+  .etat h2 { color: var(--navy); font-size: 19px; margin: 8px 0 4px; }
+  .alerte { color: #8E1109; font-weight: 700; }
+  footer { text-align: center; color: var(--doux); font-size: 12px; padding: 10px 16px 30px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="marque">W A K A T I</div>
+  <div class="slogan">NDUWO UWO</div>
+  <h1>{{ n.type_nom if n else 'Note interne' }}</h1>
+</header>
+<main>
+{% if not n %}
+  <div class="carte etat"><div class="grand">⚠</div><h2>Lien introuvable</h2>
+    <p>Ce lien n'est pas valide. Contactez le service courrier.</p></div>
+{% else %}
+  {% if message %}<div class="message" role="status">{{ message }}</div>{% endif %}
+
+  {# ---------- État et action ---------- #}
+  {% if l.traitant %}
+    {% if l.traite_le %}
+      <div class="carte etat ok"><div class="grand">✓</div><h2>Demande traitée</h2>
+        <p>Votre réponse du {{ l.traite_le[:10]|date_courte }} à {{ l.traite_le[11:16] }} est enregistrée.</p></div>
+    {% else %}
+      <div class="carte">
+        <div class="{% if n.retard %}alerte{% endif %}">Réponse attendue avant le {{ n.echeance_affiche }}{% if n.retard %} — délai dépassé{% endif %}.</div>
+        {% if not l.pris_en_charge_le %}
+        <form method="POST" action="{{ url_for('note_public.action', jeton=jeton) }}">
+          <input type="hidden" name="quoi" value="prise">
+          <button class="bouton secondaire" type="submit">Je prends en charge</button>
+        </form>
+        {% else %}
+        <div class="meta">Pris en charge le {{ l.pris_en_charge_le[:10]|date_courte }} à {{ l.pris_en_charge_le[11:16] }}.</div>
+        {% endif %}
+        <form method="POST" action="{{ url_for('note_public.action', jeton=jeton) }}">
+          <input type="hidden" name="quoi" value="traite">
+          <label for="reponse">Réponse ou suite donnée</label>
+          <textarea id="reponse" name="reponse" required maxlength="2000"></textarea>
+          <button class="bouton" type="submit">Marquer comme traitée</button>
+        </form>
+      </div>
+    {% endif %}
+  {% elif l.lu_le %}
+    <div class="carte etat ok"><div class="grand">✓</div><h2>Lu et pris connaissance</h2>
+      <p>le {{ l.lu_le[:10]|date_courte }} à {{ l.lu_le[11:16] }}</p></div>
+  {% endif %}
+
+  {# ---------- La note ---------- #}
+  <article class="carte">
+    <div class="meta">{{ n.emetteur_lib }} — Moroni, le {{ n.signe_le|date_longue }}</div>
+    <div class="titre-note" style="margin-top:14px;">{{ n.type_nom|upper }}</div>
+    {% if n.reference %}<div class="ref">{{ n.reference }}</div>{% endif %}
+    <div class="lignes">
+      {% if n.type == 'DEM' %}<div><b>À l'attention de :</b> {{ n.traitants_lib }}</div>
+      {% else %}<div><b>Destinataires :</b> {{ n.destinataires_lib }}</div>{% endif %}
+      <div><b>Objet :</b> <strong>{{ n.objet }}</strong></div>
+    </div>
+    <div class="texte">{% for p in paragraphes %}<p>{{ p }}</p>{% endfor %}</div>
+    <div class="signature">
+      <span class="tampon">Signé électroniquement le {{ (n.signe_le or '')[:10]|date_courte }} à {{ (n.signe_le or '')[11:16] }}</span>
+    </div>
+    <a class="pdf" href="{{ url_for('note_public.pdf_public', jeton=jeton) }}" target="_blank" rel="noopener">Ouvrir le PDF signé</a>
+  </article>
+
+  {% if not l.traitant and not l.lu_le %}
+  <form method="POST" action="{{ url_for('note_public.action', jeton=jeton) }}">
+    <input type="hidden" name="quoi" value="lu">
+    <button class="bouton" type="submit">J'ai lu et pris connaissance</button>
+  </form>
+  <p class="meta" style="text-align:center;">Destinataire : {{ l.nom }}{% if l.fonction %} — {{ l.fonction }}{% endif %}</p>
+  {% endif %}
+{% endif %}
+</main>
+<footer>Huri Money SA — WAKATI Mobile Money | Union des Comores<br>Lien personnel : ne le transférez pas.</footer>
+</body>
+</html>

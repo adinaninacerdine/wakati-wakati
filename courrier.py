@@ -242,6 +242,10 @@ SIGNATAIRES_DEFAUT = [
     {"code": "DT", "fonction": "Le Directeur Technique", "nom": "Aidine Ali Mouignihazi",
      "email": ""},
     {"code": "DCOM", "fonction": "La Direction Commerciale", "nom": "", "email": ""},
+    # Direction transversale (formations à l'application, ouverture de comptes,
+    # appui à l'animation) : intérim assuré par le Directeur Général.
+    {"code": "DOP", "fonction": "La Direction des Opérations", "nom": "Si Mohamed Souef",
+     "email": "", "interim": "DG"},
     {"code": "SC", "fonction": "Le Service Client", "nom": "", "email": ""},
 ]
 
@@ -718,6 +722,13 @@ def parametres():
     for s in p.get("signataires", []):
         if not (s.get("nom") or "").strip() and defauts.get(s.get("code"), {}).get("nom"):
             s["nom"] = defauts[s["code"]]["nom"]
+    # Signataires ajoutés depuis (Direction des Opérations, novembre 2026) :
+    # ajoutés une fois, puis modifiables ou supprimables dans les Paramètres.
+    deja = set(p.get("signataires_vus", [])) | {s.get("code") for s in p.get("signataires", [])}
+    for s in SIGNATAIRES_DEFAUT:
+        if s["code"] not in deja:
+            p.setdefault("signataires", []).append(copy.deepcopy(s))
+    p["signataires_vus"] = sorted(deja | {s["code"] for s in SIGNATAIRES_DEFAUT})
     return p
 
 
@@ -733,8 +744,13 @@ def codes_signataire_pour(email):
     if not email:
         return set()
     email = email.strip().lower()
-    return {s["code"] for s in parametres().get("signataires", [])
-            if (s.get("email") or "").strip().lower() == email}
+    sigs = parametres().get("signataires", [])
+    codes = {s["code"] for s in sigs if (s.get("email") or "").strip().lower() == email}
+    # Intérim : celui qui assure l'intérim agit aussi pour la direction concernée.
+    for s in sigs:
+        if s.get("interim") and s["interim"] in codes:
+            codes.add(s["code"])
+    return codes
 
 
 def reponses():
@@ -3159,6 +3175,7 @@ def ecran_parametres():
                     continue
                 agenda = f.get(f"sig_{i}_agenda", "").strip()
                 sigs.append({"code": code,
+                             "interim": f.get(f"sig_{i}_interim", "").strip().upper(),
                              "fonction": f.get(f"sig_{i}_fonction", "").strip(),
                              "nom": f.get(f"sig_{i}_nom", "").strip(),
                              "email": f.get(f"sig_{i}_email", "").strip().lower(),

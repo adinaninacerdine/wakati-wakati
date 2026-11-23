@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes internes — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Notes internes</h1>
+    <div class="contexte">
+      <a class="bouton" href="{{ url_for('notes.nouvelle') }}">＋ Nouvelle note</a>
+    </div>
+  </header>
+
+  <div class="contenu large">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% macro tableau(liste, colonne_etat) %}
+    <div class="table-defilante">
+    <table class="table-registre">
+      <thead><tr><th>Note</th><th>Émetteur</th><th>{{ colonne_etat }}</th><th>Mise à jour</th></tr></thead>
+      <tbody>
+      {% for n in liste %}
+        <tr>
+          <td><a href="{{ url_for('notes.edition', nid=n.id) }}"><strong>{{ n.objet or '(sans objet)' }}</strong></a>
+            <div class="aide" style="margin:0;">{{ n.type_nom }}{% if n.reference %} · {{ n.reference }}{% endif %}{% if n.importante %} · importante{% endif %}</div></td>
+          <td>{{ n.emetteur_lib }}</td>
+          <td>
+            {% if n.statut == 'en_circuit' %}<span class="badge">{{ n.etape_lib }}</span>
+            {% elif n.statut == 'retourne' %}<span class="badge alerte">Retournée</span>
+            {% elif n.statut == 'brouillon' %}<span class="badge">Brouillon</span>
+            {% elif n.type == 'DEM' %}
+              {% if n.statut == 'traitee' %}<span class="badge ok">Traitée</span>
+              {% elif n.retard %}<span class="badge alerte">Délai dépassé</span>
+              {% else %}<span class="badge">{{ n.nb_traites }} / {{ n.nb_traitants }} traité</span>{% endif %}
+              <div class="aide" style="margin:0;">échéance {{ n.echeance_affiche }}</div>
+            {% else %}
+              <span class="badge {% if n.taux_lecture == 100 %}ok{% endif %}">{{ n.nb_lus }} / {{ n.nb_lectures }} lu{{ 's' if n.nb_lus > 1 }}</span>
+            {% endif %}
+          </td>
+          <td>{{ n.maj_affiche }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endmacro %}
+
+    <section class="bloc">
+      <h2><span>À viser ou signer</span>{% if a_valider %}<span class="compte">{{ a_valider|length }}</span>{% endif %}</h2>
+      <div class="corps">
+        {% if a_valider %}{{ tableau(a_valider, 'Étape') }}{% else %}<p class="vide">Rien n'attend votre visa ou votre signature.</p>{% endif %}
+      </div>
+    </section>
+
+    <section class="bloc">
+      <h2><span>En préparation et en circuit</span>{% if en_cours %}<span class="compte">{{ en_cours|length }}</span>{% endif %}</h2>
+      <div class="corps">
+        {% if en_cours %}{{ tableau(en_cours, 'État') }}{% else %}<p class="vide">Aucune note en préparation.</p>{% endif %}
+      </div>
+    </section>
+
+    <section class="bloc">
+      <h2>Diffusées</h2>
+      <div class="corps">
+        {% if diffusees %}{{ tableau(diffusees, 'Lecture / traitement') }}{% else %}<p class="vide">Aucune note diffusée pour l'instant.</p>{% endif %}
+      </div>
+    </section>
+
+    <p class="aide">Circuit (manuel de gestion des courriers, § 5) : visa du DAF pour les notes de service, circulaires et mises à disposition ;
+      signature du DG pour les circulaires, les mises à disposition et les notes de service importantes ; les demandes internes sont
+      signées par la direction émettrice et traitées sous 24 h. Les destinataires confirment leur lecture par un lien personnel.</p>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+</body>
+</html>

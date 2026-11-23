@@ -50,6 +50,17 @@
     {% endif %}
     {% endif %}
 
+    {% if notes_actives and notes_redacteur %}
+    <div class="rubrique">Courrier interne</div>
+    <a class="item {% if page == 'notes' %}actif{% endif %}" href="{{ url_for('notes.liste') }}">
+      <span class="ico">✉</span> Notes internes
+      {% if cpt_notes and cpt_notes.notes_a_valider %}<span class="pastille">{{ cpt_notes.notes_a_valider }}</span>{% endif %}
+    </a>
+    <a class="item {% if page == 'notes_personnel' %}actif{% endif %}" href="{{ url_for('notes.ecran_personnel') }}">
+      <span class="ico">☷</span> Annuaire du personnel
+    </a>
+    {% endif %}
+
     {% if courrier_actif and courrier_responsable %}
     <div class="rubrique">Agenda</div>
     <a class="item {% if page == 'agenda' %}actif{% endif %}" href="{{ url_for('courrier.agenda') }}">

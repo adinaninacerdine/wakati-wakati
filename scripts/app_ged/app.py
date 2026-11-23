@@ -115,6 +115,20 @@ except Exception as _remise_err:  # noqa: BLE001
 
 
 # ==========================================
+# COURRIERS INTERNES (notes de service, circulaires, demandes, MAD)
+# ==========================================
+# Redaction par les directions, visa DAF / signature DG, signature
+# electronique interne, archivage HM26 et diffusion avec accuse de lecture
+# (/n/<jeton>, sans compte).
+try:
+    import notes
+    NOTES_DISPONIBLE = COURRIER_DISPONIBLE
+except Exception as _notes_err:  # noqa: BLE001
+    print(f"[GED] notes.py indisponible ({_notes_err}) — notes internes desactivees.")
+    NOTES_DISPONIBLE = False
+
+
+# ==========================================
 # MOTEUR DE RECHERCHE
 # ==========================================
 # Index plein texte des documents archives (noms, objets, correspondants,
@@ -141,6 +155,9 @@ if RECHERCHE_DISPONIBLE:
 if REMISE_DISPONIBLE:
     app.register_blueprint(remise.bp_remises)
     app.register_blueprint(remise.bp_remise_public)
+if NOTES_DISPONIBLE:
+    app.register_blueprint(notes.bp_notes)
+    app.register_blueprint(notes.bp_note_public)
 
 
 # ==========================================
@@ -195,14 +212,15 @@ DOSSIERS_ZOHO_DEFAUT = {
 
 SERVICES = {
     "FIN": "Finances", "RH": "Ressources Humaines", "DGA": "Direction / Admin",
-    "JUR": "Juridique", "COM": "Commercial", "EXP": "Exploitation"
+    "JUR": "Juridique", "COM": "Commercial", "EXP": "Exploitation",
+    "DSI": "Systèmes d'information", "OPS": "Opérations"
 }
 TYPES = {
     "FAC": "Facture", "CNT": "Contrat", "NOT": "Note de service", "VIR": "Virement",
     "DEM": "Demande", "ODM": "Ordre de mission", "ETA": "État / Relevé", "ACC": "Accord",
     "ATT": "Attestation", "BOR": "Bordereau", "CENT": "Courrier Entrant",
     "CSOR": "Courrier Sortant", "PV": "Procès-verbal", "DOC": "Document divers", "MAN": "Mandat",
-    "DEC": "Décision"
+    "DEC": "Décision", "CIR": "Circulaire", "MAD": "Mise à disposition"
 }
 ILES = {"NGA": "Ngazidja", "ANJ": "Anjouan", "MOH": "Mohéli"}
 
@@ -213,7 +231,7 @@ COLONNES_REGISTRE = [
 ]
 
 # Le sens determine si le correspondant est l'expediteur ou le destinataire.
-SENS = {"entrant": "Entrant", "sortant": "Sortant"}
+SENS = {"entrant": "Entrant", "sortant": "Sortant", "interne": "Interne"}
 LIBELLE_CORRESPONDANT = {"entrant": "Expéditeur", "sortant": "Destinataire"}
 COLONNES_NOTIF = ['Statut Cliq', 'Statut Sign', 'Sign Request ID']
 
@@ -534,6 +552,62 @@ if REMISE_DISPONIBLE:
         REMISE_DISPONIBLE = False
 
 
+def archiver_note(chemin, nom, service, type_doc, date_doc, objet, correspondant):
+    """Archive une note interne signee : WorkDrive (dossier service/type),
+    registre local et Zoho Sheet, index de recherche. Retourne le lien."""
+    chemin_temp = TEMP_DIR / nom
+    shutil.copy2(chemin, chemin_temp)
+    try:
+        z._refresh_access_token()
+        try:
+            dossier_id = get_zoho_folder_id(service, type_doc)
+        except Exception:  # noqa: BLE001
+            dossier_id = DOSSIERS_ZOHO_DEFAUT["sortant"]
+        resp = upload_avec_diagnostic(chemin_temp, dossier_id)
+        permalink, _ = extraire_lien_fichier(resp)
+
+        ligne = [nom, SERVICES.get(service, service), TYPES.get(type_doc, type_doc), date_doc,
+                 '', objet, 'Courriers internes', 'Zoho WorkDrive', 'Classé', permalink,
+                 SENS["interne"], correspondant]
+        if COLONNES_NOTIF_ACTIVES:
+            ligne += ["", "Signature électronique GED", ""]
+        if COLONNES_REPONSE_ACTIVES:
+            ligne += ['' for _ in COLONNES_REPONSE]
+        with open(FICHIER_REGISTRE, mode='a', encoding='utf-8-sig', newline='') as f:
+            csv.writer(f, delimiter=';').writerow(ligne)
+        try:
+            z.sheet_add_row(ZOHO_SHEET_WORKBOOK_ID, ZOHO_SHEET_WORKSHEET_ID, {
+                "Nom du fichier": nom, "Service": SERVICES.get(service, service),
+                "Type": TYPES.get(type_doc, type_doc), "Date": date_doc, "Île": "",
+                "Objet": objet, "Branche GED": "Courriers internes",
+                "Emplacement physique": "Zoho WorkDrive", "Statut": "Classé",
+                "Lien Zoho": permalink, "Sens": SENS["interne"], "Correspondant": correspondant})
+        except Exception:  # noqa: BLE001
+            logging.error("Zoho Sheet (note interne %s) : %s", nom, traceback.format_exc())
+        if RECHERCHE_DISPONIBLE:
+            try:
+                recherche.indexer_fichier({
+                    "nom": nom, "service": SERVICES.get(service, service),
+                    "type_doc": TYPES.get(type_doc, type_doc), "date": date_doc,
+                    "sens": SENS["interne"], "correspondant": correspondant, "objet": objet,
+                    "lien": permalink if str(permalink).startswith('http') else '',
+                    "source": "notes internes GED", "origine": nom}, chemin_temp)
+            except Exception:  # noqa: BLE001
+                logging.error("Indexation de %s : %s", nom, traceback.format_exc())
+        return permalink
+    finally:
+        chemin_temp.unlink(missing_ok=True)
+
+
+if NOTES_DISPONIBLE:
+    try:
+        notes.init_notes(app, connexion_requise if AUTH_ACTIVE else None,
+                         archiver_note=archiver_note, dernier_numero=dernier_numero)
+    except Exception:  # noqa: BLE001
+        logging.error("Initialisation des notes internes : %s", traceback.format_exc())
+        NOTES_DISPONIBLE = False
+
+
 if RECHERCHE_DISPONIBLE:
     try:
         recherche.init_recherche(app, connexion_requise if AUTH_ACTIVE else None,
@@ -547,7 +621,8 @@ if RECHERCHE_DISPONIBLE:
 def _contexte_barre():
     """Compteurs de la barre laterale, sur toutes les pages."""
     ctx = {"courrier_actif": COURRIER_DISPONIBLE, "recherche_active": RECHERCHE_DISPONIBLE,
-           "remise_active": REMISE_DISPONIBLE,
+           "remise_active": REMISE_DISPONIBLE, "notes_actives": NOTES_DISPONIBLE,
+           "cpt_notes": None,
            "nb_a_viser": 0,
            "cpt_courrier": None, "courrier_responsable": False}
     try:
@@ -560,6 +635,13 @@ def _contexte_barre():
         try:
             ctx["cpt_courrier"] = courrier.compteurs()
             ctx["courrier_responsable"] = courrier.est_responsable_ged()
+        except Exception:  # noqa: BLE001
+            pass
+    if NOTES_DISPONIBLE:
+        try:
+            ctx["cpt_notes"] = notes.compteurs()
+            ctx["notes_redacteur"] = bool(courrier.est_responsable_ged()
+                                          or notes.codes_utilisateur())
         except Exception:  # noqa: BLE001
             pass
     return ctx
