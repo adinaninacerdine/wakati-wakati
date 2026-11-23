@@ -1,7 +1,7 @@
 {# Barre laterale partagee — modifier ICI et nulle part ailleurs.
    Chaque page passe la variable `page` :
    recherche | courriers | tableau | visa | nouveau | courrier | banque | parametres | agenda | rdv
-   | remises | notes | notes_modeles | notes_personnel #}
+   | remises | notes | notes_modeles | notes_personnel | notifications #}
 <aside class="barre">
   <div class="marque-zone">
     <div class="marque">W A K A T I</div>
@@ -48,6 +48,11 @@
     <a class="item {% if page == 'parametres' %}actif{% endif %}" href="{{ url_for('courrier.ecran_parametres') }}">
       <span class="ico">⚙</span> Paramètres
     </a>
+    {% if routeur_actif %}
+    <a class="item {% if page == 'notifications' %}actif{% endif %}" href="{{ url_for('notifications.ecran') }}">
+      <span class="ico">🔔</span> Notifications
+    </a>
+    {% endif %}
     {% endif %}
     {% endif %}
 

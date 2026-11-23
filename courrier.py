@@ -2290,14 +2290,19 @@ def rediger_paragraphe(rep, consignes_sup=""):
 # ---------------------------------------------------------------------------
 # Notifications et relances
 # ---------------------------------------------------------------------------
-def _cliq(titre, lignes, url="", tableau=None):
-    """Carte dans #ged-notifications. `tableau` (liste de (champ, valeur))
-    remplace le tableau standard Type / Service / Correspondant / Date."""
+def _cliq(titre, lignes, url="", tableau=None, nature="suivi", urgent=False):
+    """Carte Cliq. `tableau` (liste de (champ, valeur)) remplace le tableau
+    standard Type / Service / Correspondant / Date.
+    `nature` : « suivi » (#ged-courrier) ou « direction » (#ged-direction) ;
+    `urgent` : e-mail à la Direction en plus, même en plage de silence
+    (routeur.py ; sans routeur, tout part dans le canal unique)."""
     notif = _CTX.get("notifier")
     if not notif:
         return
     try:
         notif({
+            "nature": nature,
+            "urgent": urgent,
             "lignes": tableau,
             "titre": titre,
             "numero": lignes.get("Statut", ""),
@@ -2314,8 +2319,9 @@ def _cliq(titre, lignes, url="", tableau=None):
 
 
 def relancer_echeances():
-    """Relance dans #ged-notifications les entrants dont l'échéance est
-    dépassée sans réponse. Une relance par intervalle (24 h par défaut)."""
+    """Relance dans #ged-direction les entrants dont l'échéance est
+    dépassée sans réponse. Une relance par intervalle (24 h par défaut).
+    Courrier urgent : e-mail à la Direction en plus (routeur.py)."""
     try:
         p = parametres()
         intervalle = timedelta(hours=int(p.get("relance_intervalle_h", 24)))
@@ -2342,14 +2348,19 @@ def relancer_echeances():
                 _ecrire(F_ENTRANTS, ents)
         for e in a_relancer:
             fiche = correspondant(e.get("correspondant_id")) or {}
+            cat = categorie(fiche.get("categorie") or "") or {}
+            # Correspondant confidentiel : ni objet, ni nom, ni lien dans le canal.
+            confidentiel = bool(fiche.get("confidentiel") or cat.get("confidentiel"))
             _cliq("⏰ Courrier sans réponse — échéance dépassée", {
                 "Statut": STATUTS_ENTRANT.get(e["statut_reponse"], ""),
-                "Objet": e.get("objet", ""),
+                "Objet": "Courrier confidentiel (voir la GED)" if confidentiel else e.get("objet", ""),
                 "Service": e.get("service", "-"),
                 "Nature": "Courrier entrant",
-                "Correspondant": fiche.get("organisation") or e.get("correspondant", "-"),
+                "Correspondant": "—" if confidentiel
+                else fiche.get("organisation") or e.get("correspondant", "-"),
                 "Échéance": date_courte(e.get("echeance")),
-            }, e.get("lien", ""))
+            }, "" if confidentiel else e.get("lien", ""),
+                nature="direction", urgent=e.get("urgence") == "urgente")
         return len(a_relancer)
     except Exception:  # noqa: BLE001
         logging.error("Relance des échéances impossible", exc_info=True)
@@ -2846,14 +2857,28 @@ def soumettre(ref):
         _ecrire(F_REPONSES, reps)
 
     sig = signataire(rep.get("signataire", "")) or {}
-    _cliq("✉ Projet de réponse à valider", {
-        "Statut": "À valider",
-        "Objet": rep.get("objet", ""),
-        "Service": _CTX["services"].get(rep.get("service"), rep.get("service", "-")),
-        "Nature": NATURES.get(rep.get("nature"), "Courrier"),
-        "Correspondant": organisation,
-        "Date": sig.get("fonction", rep.get("signataire", "")),
-    })
+    urgent = (entrants().get(rep.get("entrant_id") or "", {}).get("urgence") == "urgente")
+    envoye = False
+    if sig.get("email"):
+        try:
+            import routeur  # noqa: PLC0415
+            lien = routeur.lien("courrier.edition", ref=ref)
+            envoye = routeur.personne(
+                sig["email"], f"Projet de réponse à valider : {rep.get('objet', '')}",
+                f"✉ Projet de réponse à valider{' — URGENT' if urgent else ''}\n"
+                f"Objet : {rep.get('objet', '')}\nCorrespondant : {organisation}\n{lien}",
+                nature="action", urgent=urgent)[0]
+        except Exception:  # noqa: BLE001
+            logging.error("Notification du signataire impossible", exc_info=True)
+    if not envoye:
+        _cliq("✉ Projet de réponse à valider", {
+            "Statut": "À valider",
+            "Objet": rep.get("objet", ""),
+            "Service": _CTX["services"].get(rep.get("service"), rep.get("service", "-")),
+            "Nature": NATURES.get(rep.get("nature"), "Courrier"),
+            "Correspondant": organisation,
+            "Date": sig.get("fonction", rep.get("signataire", "")),
+        })
     flash(f"Projet transmis pour validation ({sig.get('fonction') or rep.get('signataire')}). "
           f"Référence : {rep.get('ref_imprimee') or rep['ref_sortant']}", "success")
     return redirect(url_for("courrier.edition", ref=ref))

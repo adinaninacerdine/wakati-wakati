@@ -267,9 +267,10 @@ def _build_cliq_payload(doc):
     return payload
 
 
-def notify_cliq(doc):
-    """Poste une carte dans le canal Cliq. Retourne (ok, detail)."""
-    channel = _get("CLIQ_CHANNEL", "")
+def notify_cliq(doc, channel=None):
+    """Poste une carte dans un canal Cliq (par défaut CLIQ_CHANNEL).
+    Retourne (ok, detail)."""
+    channel = channel or _get("CLIQ_CHANNEL", "")
     if not channel:
         return False, "CLIQ_CHANNEL non configuré"
 
@@ -481,9 +482,9 @@ def message_cliq_personne(email, texte):
     return False, f"Cliq HTTP {resp.status_code} : {resp.text[:200]}"
 
 
-def message_cliq_canal(texte):
-    """Message texte dans le canal GED. Retourne (ok, detail)."""
-    channel = _get("CLIQ_CHANNEL", "")
+def message_cliq_canal(texte, channel=None):
+    """Message texte dans un canal (par défaut CLIQ_CHANNEL). Retourne (ok, detail)."""
+    channel = channel or _get("CLIQ_CHANNEL", "")
     if not channel:
         return False, "CLIQ_CHANNEL non configuré"
     try:
@@ -842,19 +843,24 @@ def send_for_signature(connector, doc, pdf_bytes=None, pdf_path=None):
 # ===========================================================================
 # ORCHESTRATEUR
 # ===========================================================================
-def dispatch(doc, connector=None, pdf_bytes=None, signature=False, attach_email=False):
-    """Déclenche tous les canaux. Ne lève jamais. Retourne un dict de statuts."""
+def dispatch(doc, connector=None, pdf_bytes=None, signature=False, attach_email=False,
+             cliq=True, email=True):
+    """Déclenche les canaux demandés. Ne lève jamais. Retourne un dict de statuts.
+    Avec le routeur (routeur.py), la GED appelle dispatch(cliq=False, email=False)
+    pour la seule signature : Cliq et e-mail passent par le routeur."""
     res = {}
 
-    try:
-        res["cliq"] = notify_cliq(doc)
-    except Exception as exc:  # noqa: BLE001
-        res["cliq"] = (False, f"exception : {exc}")
+    if cliq:
+        try:
+            res["cliq"] = notify_cliq(doc)
+        except Exception as exc:  # noqa: BLE001
+            res["cliq"] = (False, f"exception : {exc}")
 
-    try:
-        res["email"] = notify_email(doc, pdf_bytes=pdf_bytes, attach=attach_email)
-    except Exception as exc:  # noqa: BLE001
-        res["email"] = (False, f"exception : {exc}")
+    if email:
+        try:
+            res["email"] = notify_email(doc, pdf_bytes=pdf_bytes, attach=attach_email)
+        except Exception as exc:  # noqa: BLE001
+            res["email"] = (False, f"exception : {exc}")
 
     if signature:
         try:

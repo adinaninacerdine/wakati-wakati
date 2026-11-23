@@ -129,6 +129,20 @@ except Exception as _notes_err:  # noqa: BLE001
 
 
 # ==========================================
+# ROUTEUR DE NOTIFICATIONS (Cliq / e-mail)
+# ==========================================
+# Une nature d'evenement = un canal : prive (action), #ged-courrier (suivi),
+# #ged-direction (alertes), e-mail (secours, urgence, recap de 17 h).
+# Plage de silence, regroupement, relances et escalades automatiques.
+try:
+    import routeur
+    ROUTEUR_DISPONIBLE = COURRIER_DISPONIBLE
+except Exception as _routeur_err:  # noqa: BLE001
+    print(f"[GED] routeur.py indisponible ({_routeur_err}) — notifications directes.")
+    ROUTEUR_DISPONIBLE = False
+
+
+# ==========================================
 # MOTEUR DE RECHERCHE
 # ==========================================
 # Index plein texte des documents archives (noms, objets, correspondants,
@@ -158,6 +172,8 @@ if REMISE_DISPONIBLE:
 if NOTES_DISPONIBLE:
     app.register_blueprint(notes.bp_notes)
     app.register_blueprint(notes.bp_note_public)
+if ROUTEUR_DISPONIBLE:
+    app.register_blueprint(routeur.bp_notifications)
 
 
 # ==========================================
@@ -520,7 +536,8 @@ if COURRIER_DISPONIBLE:
         courrier.init_courrier(
             app, connexion_requise if AUTH_ACTIVE else None,
             services=SERVICES, types=TYPES, dernier_numero=dernier_numero,
-            notifier=(notify_cliq if NOTIFIER_DISPONIBLE else None))
+            notifier=((routeur.carte if ROUTEUR_DISPONIBLE else notify_cliq)
+                      if NOTIFIER_DISPONIBLE else None))
     except Exception:  # noqa: BLE001
         logging.error("Initialisation du module Courrier : %s", traceback.format_exc())
         COURRIER_DISPONIBLE = False
@@ -608,6 +625,17 @@ if NOTES_DISPONIBLE:
         NOTES_DISPONIBLE = False
 
 
+if ROUTEUR_DISPONIBLE:
+    try:
+        routeur.init_routeur(app, connexion_requise if AUTH_ACTIVE else None)
+        # Relance des echeances depassees : tourne aussi sous gunicorn
+        # (la boucle de releve ne demarre qu'en lancement direct).
+        routeur.enregistrer_rappel(courrier.relancer_echeances)
+    except Exception:  # noqa: BLE001
+        logging.error("Initialisation du routeur : %s", traceback.format_exc())
+        ROUTEUR_DISPONIBLE = False
+
+
 if RECHERCHE_DISPONIBLE:
     try:
         recherche.init_recherche(app, connexion_requise if AUTH_ACTIVE else None,
@@ -622,6 +650,7 @@ def _contexte_barre():
     """Compteurs de la barre laterale, sur toutes les pages."""
     ctx = {"courrier_actif": COURRIER_DISPONIBLE, "recherche_active": RECHERCHE_DISPONIBLE,
            "remise_active": REMISE_DISPONIBLE, "notes_actives": NOTES_DISPONIBLE,
+           "routeur_actif": ROUTEUR_DISPONIBLE,
            "cpt_notes": None,
            "nb_a_viser": 0,
            "cpt_courrier": None, "courrier_responsable": False}
@@ -746,9 +775,22 @@ def index():
                     "sheet_url": lien_registre,
                 }
                 try:
-                    resultats = dispatch(doc_notif, connector=z,
-                                         pdf_bytes=contenu_pdf,
-                                         signature=besoin_signature)
+                    if ROUTEUR_DISPONIBLE:
+                        # Signature seule ici ; Cliq passe par le routeur et
+                        # l'e-mail par document est remplace par le recap de 17 h.
+                        # Courrier entrant urgent : #ged-direction + e-mail.
+                        resultats = dispatch(doc_notif, connector=z, pdf_bytes=contenu_pdf,
+                                             signature=besoin_signature, cliq=False, email=False)
+                        urgent = sens == 'entrant' and reponse_attendue == 'urgente'
+                        resultats["cliq"] = routeur.carte({
+                            **doc_notif,
+                            "titre": "Courrier entrant URGENT" if urgent else "",
+                            "nature": "direction" if urgent else "suivi",
+                            "urgent": urgent})
+                    else:
+                        resultats = dispatch(doc_notif, connector=z,
+                                             pdf_bytes=contenu_pdf,
+                                             signature=besoin_signature)
                     statut_cliq, statut_sign, sign_id = statuts_pour_registre(resultats)
                 except Exception:
                     logging.error("Échec notifications pour %s\n%s",

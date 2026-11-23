@@ -568,7 +568,8 @@ def enregistrer_echec(r, f, fichiers):
     C._cliq("⚠ Remise non effectuée", {"Statut": "Échec remise", "Objet": r.get("objet", "")}, "",
             tableau=[("Motif", libelle), ("Destinataire", r.get("organisation") or "-"),
                      ("Le", _date_heure_longue(tv["le"])),
-                     ("Tentative", f"n° {len(r['tentatives'])}")])
+                     ("Tentative", f"n° {len(r['tentatives'])}")],
+            nature="direction")
     return ""
 
 

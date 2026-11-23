@@ -399,7 +399,10 @@ def enregistrer(reference):
 
     # Notification du service documentaire, sans bloquer si elle echoue.
     try:
-        from notifier import notify_cliq
+        try:
+            from routeur import carte as notify_cliq  # #ged-courrier, regroupement, silence
+        except Exception:  # noqa: BLE001
+            from notifier import notify_cliq
         notify_cliq({
             "numero": "Visa DG" if decision == "viser" else "Retour DG",
             "nom_fichier": d.get("objet", ""),

@@ -94,7 +94,7 @@ SERVICE_PAR_DIRECTION = {"DG": "DGA", "DAF": "FIN", "DT": "DSI", "DCOM": "COM", 
 DELAI_DEMANDE_H = 24
 FORMAT_REFERENCE = "N°{annee}-{numero}/{type}/{emetteur}/HM"
 
-_CTX = {"archiver_note": None, "dernier_numero": None}
+_CTX = {"archiver_note": None, "dernier_numero": None, "racine": ""}
 
 
 # ---------------------------------------------------------------------------
@@ -481,18 +481,30 @@ def _historiser(n, action, detail="", par=None):
     n["maj_le"] = C._maintenant()
 
 
+def _prive(email, titre, texte, **kw):
+    """Message privé par le routeur (silence, regroupement, secours e-mail) ;
+    à défaut, Cliq direct. Retourne (ok | "attente", détail)."""
+    try:
+        import routeur  # noqa: PLC0415
+        return routeur.personne(email, titre, texte, **kw)
+    except ImportError:
+        import notifier  # noqa: PLC0415
+        return notifier.message_cliq_personne(email, texte)
+
+
 def _notifier_valideur(n, e):
-    """Message privé Cliq au signataire attendu, avec le lien vers la note."""
+    """Message privé au signataire attendu (e-mail en plus si la note est
+    importante), avec le lien vers la note."""
     d = direction(e["code"])
     if not d.get("email"):
         return
     try:
-        import notifier  # noqa: PLC0415
         lien = _url_ged("notes.edition", nid=n["id"])
-        notifier.message_cliq_personne(
-            d["email"],
-            f"✍ {TYPES_NOTE[n['type']]['nom']} à {ROLES[e['role']].lower()} : "
-            f"{n.get('objet', '')}\nÉmetteur : {direction(n['emetteur']).get('fonction')}\n{lien}")
+        titre = f"{TYPES_NOTE[n['type']]['nom']} à {ROLES[e['role']].lower()} : {n.get('objet', '')}"
+        _prive(d["email"], titre,
+               f"✍ {titre}{' — IMPORTANTE' if n.get('importante') else ''}\n"
+               f"Émetteur : {direction(n['emetteur']).get('fonction')}\n{lien}",
+               nature="action", urgent=bool(n.get("importante")))
     except Exception:  # noqa: BLE001
         logging.error("Notification du valideur impossible", exc_info=True)
 
@@ -505,6 +517,7 @@ def _racine():
 
 
 def _url_ged(endpoint, **kw):
+    _CTX["racine"] = _racine()   # mémorisée pour les relances de la boucle de fond
     return f"{_racine()}{url_for(endpoint, **kw)}"
 
 
@@ -569,10 +582,9 @@ def decider(nid, decision, observation=""):
     if decision == "retourner":
         if createur:
             try:
-                import notifier  # noqa: PLC0415
-                notifier.message_cliq_personne(
-                    createur, f"↩ Note retournée : {n.get('objet', '')}\n{observation}\n"
-                              f"{_url_ged('notes.edition', nid=nid)}")
+                _prive(createur, f"Note retournée : {n.get('objet', '')}",
+                       f"↩ Note retournée : {n.get('objet', '')}\n{observation}\n"
+                       f"{_url_ged('notes.edition', nid=nid)}", nature="action")
             except Exception:  # noqa: BLE001
                 logging.error("Notification du retour impossible", exc_info=True)
         return ""
@@ -645,6 +657,7 @@ def finaliser(nid, par):
 
 
 def _apres_signature(nid, racine):
+    _CTX["racine"] = racine
     diffuser(nid, racine)
     archiver(nid)
 
@@ -693,13 +706,20 @@ def _message(n, l, racine, relance=False):
             f"{action} :\n{lien}")
 
 
+def _canaux_lisibles(ok, detail):
+    if ok == "attente":
+        return detail.replace("programmé", "Cliq programmé") if "programmé" in detail else "Cliq en file"
+    if not ok:
+        return "échec d'envoi"
+    if str(detail).startswith("Cliq KO"):
+        return "e-mail (secours)"
+    return "Cliq"
+
+
 def diffuser(nid, racine, seulement_non_lus=False):
-    """Envoie à chaque destinataire son lien personnel (Cliq + e-mail)."""
-    try:
-        import notifier  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
-        logging.error("notifier indisponible : diffusion impossible")
-        return 0
+    """Envoie à chaque destinataire son lien personnel, en message privé Cliq
+    (e-mail en secours ; e-mail en plus pour une note importante). Passe par
+    le routeur : plage de silence et regroupement respectés."""
     n = note(nid)
     if not n:
         return 0
@@ -712,16 +732,18 @@ def diffuser(nid, racine, seulement_non_lus=False):
             resultats[l["jeton"]] = ("", "sans adresse")
             continue
         texte = _message(n, l, racine, relance=seulement_non_lus)
-        canaux = []
-        ok, _ = notifier.message_cliq_personne(l["email"], texte)
-        if ok:
-            canaux.append("Cliq")
-        ok, _ = notifier.envoyer_email(
-            [l["email"]], f"{TYPES_NOTE[n['type']]['nom']} — {n.get('objet', '')}", texte)
-        if ok:
-            canaux.append("e-mail")
-        resultats[l["jeton"]] = (C._maintenant(), " + ".join(canaux) or "échec d'envoi")
-        envoyes += 1 if canaux else 0
+        try:
+            ok, detail = _prive(l["email"], f"{TYPES_NOTE[n['type']]['nom']} — {n.get('objet', '')}",
+                                texte, nature="action" if l.get("traitant") else "info",
+                                urgent=bool(n.get("importante")), hook="note_envoi",
+                                contexte={"nid": nid, "jeton": l["jeton"]})
+        except Exception as exc:  # noqa: BLE001
+            ok, detail = False, str(exc)
+        canaux = _canaux_lisibles(ok, detail)
+        if n.get("importante") and ok is True:
+            canaux += " + e-mail"
+        resultats[l["jeton"]] = (C._maintenant() if ok is True else "", canaux)
+        envoyes += 1 if ok else 0
     with C._verrou:
         toutes = notes()
         n = toutes.get(nid)
@@ -735,6 +757,126 @@ def diffuser(nid, racine, seulement_non_lus=False):
                     f"{envoyes} destinataire(s) prévenu(s)", "GED")
         _sauver(toutes)
     return envoyes
+
+
+def _suite_envoi(item, ok, detail):
+    """Appelée par le routeur après un envoi différé (silence, regroupement)."""
+    if item.get("canal") != "cliq_prive":
+        return
+    ctx = item.get("contexte") or {}
+    with C._verrou:
+        toutes = notes()
+        n = toutes.get(ctx.get("nid"))
+        if not n:
+            return
+        for l in n.get("lectures", []):
+            if l.get("jeton") == ctx.get("jeton"):
+                if ok:
+                    l["envoye_le"] = C._maintenant()
+                l["canaux"] = _canaux_lisibles(ok, detail)
+        _sauver(toutes)
+
+
+def relances_automatiques():
+    """Lancée toutes les 10 min par le routeur :
+    - étape de circuit en attente : rappel privé après le délai, puis
+      escalade (privé + e-mail, copie DG, alerte #ged-direction) ;
+    - note diffusée non lue après 24 h : e-mail de secours, une fois ;
+    - demande interne non traitée à l'échéance : escalade du traitant,
+      copie à la direction émettrice, une fois."""
+    try:
+        import routeur  # noqa: PLC0415
+    except ImportError:
+        return
+    delai = timedelta(hours=int(routeur.reglages().get("delai_rappel_h", 24)))
+    maintenant = datetime.now()
+    a_faire = []
+    with C._verrou:
+        toutes = notes()
+        for n in toutes.values():
+            e = etape_courante(n)
+            if e:
+                i = n.get("etape", 0)
+                prec = [x.get("le") for x in n.get("etapes", [])[:i] if x.get("le")]
+                depuis = max(prec + [n.get("soumis_le") or ""]) or ""
+                suivi = n.get("relances_etape") or {}
+                if suivi.get("etape") != i:
+                    suivi = {"etape": i, "nb": 0, "le": ""}
+                try:
+                    attente = maintenant - datetime.fromisoformat(depuis)
+                except ValueError:
+                    continue
+                if suivi["nb"] < 2 and attente >= delai * (suivi["nb"] + 1):
+                    suivi["nb"] += 1
+                    suivi["le"] = maintenant.isoformat(timespec="seconds")
+                    n["relances_etape"] = suivi
+                    _historiser(n, "Rappel automatique" if suivi["nb"] == 1 else "Escalade",
+                                f"{ROLES[e['role']]} {e['code']} en attente depuis "
+                                f"{int(attente.total_seconds() // 3600)} h", "GED")
+                    a_faire.append(("etape", dict(n), dict(e), suivi["nb"]))
+            if n.get("statut") != "diffuse":
+                continue
+            for l in n.get("lectures", []):
+                if not l.get("email") or l.get("traite_le"):
+                    continue
+                if l.get("traitant"):
+                    try:
+                        retard = n.get("echeance") and datetime.fromisoformat(n["echeance"]) < maintenant
+                    except ValueError:
+                        retard = False
+                    if retard and not l.get("escalade_le"):
+                        l["escalade_le"] = maintenant.isoformat(timespec="seconds")
+                        _historiser(n, "Escalade : délai dépassé", l.get("nom", ""), "GED")
+                        a_faire.append(("demande", dict(n), dict(l), 0))
+                elif not l.get("lu_le") and not l.get("email_secours_le") and l.get("envoye_le"):
+                    try:
+                        vieux = datetime.fromisoformat(l["envoye_le"]) + timedelta(hours=24) < maintenant
+                    except ValueError:
+                        vieux = False
+                    if vieux:
+                        l["email_secours_le"] = maintenant.isoformat(timespec="seconds")
+                        a_faire.append(("non_lu", dict(n), dict(l), 0))
+        if a_faire:
+            _sauver(toutes)
+    racine = routeur.racine() or _CTX.get("racine", "")
+    for quoi, n, x, nb in a_faire:
+        try:
+            if quoi == "etape":
+                d = direction(x["code"])
+                lien = f"{racine}/notes/{n['id']}" if racine else ""
+                titre = f"{TYPES_NOTE[n['type']]['nom']} en attente de {ROLES[x['role']].lower()} : {n.get('objet', '')}"
+                texte = (f"⏰ {titre}\nÉmetteur : {direction(n['emetteur']).get('fonction')}\n"
+                         f"Soumise le {C.date_courte((n.get('soumis_le') or '')[:10])}.\n{lien}")
+                if d.get("email"):
+                    routeur.personne(d["email"], titre, texte,
+                                     nature="action" if nb == 1 else "escalade")
+                if nb == 2:
+                    copie = (direction("DG").get("email") if x["code"] != "DG"
+                             else ", ".join(C._auth_liste("RESPONSABLES_GED") or []))
+                    routeur.email([c.strip() for c in str(copie).split(",")],
+                                  f"[Copie] {titre}", f"Pour information :\n\n{texte}")
+                    # Canal partagé : jamais l'objet d'une note confidentielle.
+                    objet = "note confidentielle" if n.get("confidentielle") else n.get("objet", "")
+                    routeur.canal("direction", texte=f"⏰ Note bloquée depuis plus de "
+                                                     f"{2 * int(routeur.reglages().get('delai_rappel_h', 24))} h : "
+                                                     f"{TYPES_NOTE[n['type']]['nom']} « {objet} » — en attente de "
+                                                     f"{ROLES[x['role']].lower()}",
+                                  titre=f"Note bloquée : {objet}")
+            elif quoi == "demande":
+                texte = (f"⚠ Demande interne non traitée, délai dépassé : {n.get('objet', '')}\n"
+                         f"Réponse attendue avant le {n.get('echeance', '')[:10]} "
+                         f"{n.get('echeance', '')[11:16]}.\n{racine}/n/{x['jeton']}")
+                routeur.personne(x["email"], f"Demande non traitée : {n.get('objet', '')}", texte,
+                                 nature="escalade")
+                em = direction(n["emetteur"]).get("email") or n.get("cree_par_email")
+                if em:
+                    routeur.email([em], f"[Copie] Demande non traitée par {x.get('nom', '')}",
+                                  f"Pour information :\n\n{texte.rsplit(chr(10), 1)[0]}")
+            elif quoi == "non_lu":
+                routeur.email([x["email"]], f"Rappel — {TYPES_NOTE[n['type']]['nom']} à lire : {n.get('objet', '')}",
+                              _message(n, x, racine, relance=True))
+        except Exception:  # noqa: BLE001
+            logging.error("Relance automatique de la note %s", n.get("id"), exc_info=True)
 
 
 def _objet_fichier(texte):
@@ -1636,10 +1778,10 @@ def action(jeton):
     if quoi == "traite":
         createur = n.get("cree_par_email") or direction(n["emetteur"]).get("email")
         try:
-            import notifier  # noqa: PLC0415
             if createur:
-                notifier.message_cliq_personne(
-                    createur, f"✅ Demande traitée par {l['nom']} : {n.get('objet', '')}\n{reponse[:500]}")
+                _prive(createur, f"Demande traitée : {n.get('objet', '')}",
+                       f"✅ Demande traitée par {l['nom']} : {n.get('objet', '')}\n{reponse[:500]}",
+                       nature="info")
         except Exception:  # noqa: BLE001
             logging.error("Notification de traitement impossible", exc_info=True)
     return redirect(url_for("note_public.page", jeton=jeton, m=message))
@@ -1653,6 +1795,12 @@ def init_notes(app, protection=None, archiver_note=None, dernier_numero=None):
     /notes sont protégés : /n/<jeton> est ouvert par le destinataire."""
     _CTX["archiver_note"] = archiver_note
     _CTX["dernier_numero"] = dernier_numero
+    try:
+        import routeur  # noqa: PLC0415
+        routeur.enregistrer_suite("note_envoi", _suite_envoi)
+        routeur.enregistrer_rappel(relances_automatiques)
+    except ImportError:
+        pass
     if protection is not None:
         for nom, vue in list(app.view_functions.items()):
             if nom.startswith("notes."):

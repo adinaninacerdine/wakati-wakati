@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifications — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Notifications</h1>
+    <div class="contexte">
+      {% if silence %}<span class="badge">Plage de silence en cours</span>{% else %}<span class="badge ok">Envoi actif</span>{% endif %}
+      &nbsp;{{ attente|length }} message(s) en attente
+    </div>
+  </header>
+
+  <div class="contenu large">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <section class="bloc">
+      <h2>Qui reçoit quoi</h2>
+      <div class="corps">
+        <div class="table-defilante">
+        <table class="table-registre" style="min-width:0;">
+          <thead><tr><th>Événement</th><th>Canal</th><th>E-mail</th></tr></thead>
+          <tbody>
+            <tr><td>Une personne doit agir : viser, signer, valider un projet, traiter une demande, corriger un retour</td>
+                <td>Message privé Cliq</td><td>si Cliq échoue, ou si c'est urgent / important</td></tr>
+            <tr><td>Note interne à lire</td><td>Message privé Cliq (lien personnel)</td><td>si Cliq échoue, ou non lue après 24 h, ou note importante</td></tr>
+            <tr><td>Document archivé, courrier remis, visa rendu, RDV</td><td>#{{ canal_courrier or '?' }}</td><td>non (récapitulatif de {{ r.recap_heure }})</td></tr>
+            <tr><td>Échéance dépassée, remise échouée, note bloquée, courrier entrant urgent</td><td>#{{ canal_direction or '?' }}</td><td>si urgent : {{ dest_direction|join(', ') or '—' }}</td></tr>
+            <tr><td>Étape non traitée après {{ r.delai_rappel_h }} h</td><td>rappel privé, puis escalade</td><td>à l'escalade, avec copie au DG</td></tr>
+          </tbody>
+        </table>
+        </div>
+        <p class="aide">Plage de silence {{ r.silence_debut }} – {{ r.silence_fin }}{% if r.silence_dimanche %} et le dimanche{% endif %} :
+          les messages partent au matin, sauf les urgences. Plusieurs messages pour la même personne en {{ r.regroupement_s }} s
+          partent en un seul ; plus de trois cartes pour un canal deviennent un résumé.</p>
+      </div>
+    </section>
+
+    <div class="duo">
+      <section class="bloc">
+        <h2>Réglages</h2>
+        <div class="corps">
+          <form method="POST" action="{{ url_for('notifications.ecran') }}">
+            <input type="hidden" name="action" value="enregistrer">
+            <div class="rang">
+              <div class="champ"><label for="r_cc">Canal suivi (nom unique Cliq)</label>
+                <input type="text" id="r_cc" name="canal_courrier" value="{{ r.canal_courrier }}" placeholder="{{ canal_courrier or 'gedcourrier' }}"></div>
+              <div class="champ"><label for="r_cd">Canal Direction</label>
+                <input type="text" id="r_cd" name="canal_direction" value="{{ r.canal_direction }}" placeholder="geddirection"></div>
+            </div>
+            <div class="aide" style="margin-top:-6px;">Vide : le canal actuel ({{ canal_courrier or 'non configuré' }}). Le compte qui publie doit être membre des canaux.</div>
+            <div class="champ"><label for="r_ed">E-mails Direction (urgences et récapitulatif)</label>
+              <input type="text" id="r_ed" name="emails_direction" value="{{ r.emails_direction }}" placeholder="{{ dest_direction|join(', ') }}">
+              <div class="aide">Vide : DG, utilisateurs Direction et responsables GED.</div></div>
+            <div class="champ"><label for="r_adr">Adresse de la GED (liens des relances)</label>
+              <input type="text" id="r_adr" name="adresse_ged" value="{{ r.adresse_ged }}" placeholder="https://ged.wakati.km"></div>
+            <label class="case"><input type="checkbox" name="silence_actif" {% if r.silence_actif %}checked{% endif %}> Plage de silence</label>
+            <div class="rang">
+              <div class="champ"><label for="r_sd">Début</label><input type="time" id="r_sd" name="silence_debut" value="{{ r.silence_debut }}"></div>
+              <div class="champ"><label for="r_sf">Fin</label><input type="time" id="r_sf" name="silence_fin" value="{{ r.silence_fin }}"></div>
+            </div>
+            <label class="case"><input type="checkbox" name="silence_dimanche" {% if r.silence_dimanche %}checked{% endif %}> Silence tout le dimanche</label>
+            <div class="rang">
+              <div class="champ"><label for="r_rg">Regroupement (secondes)</label><input type="number" id="r_rg" name="regroupement_s" min="0" max="900" value="{{ r.regroupement_s }}"></div>
+              <div class="champ"><label for="r_dr">Rappel après (heures)</label><input type="number" id="r_dr" name="delai_rappel_h" min="1" max="240" value="{{ r.delai_rappel_h }}"></div>
+            </div>
+            <label class="case"><input type="checkbox" name="recap_actif" {% if r.recap_actif %}checked{% endif %}> Récapitulatif quotidien par e-mail (lundi – samedi)</label>
+            <div class="champ" style="max-width:180px;"><label for="r_rh">Heure du récapitulatif</label><input type="time" id="r_rh" name="recap_heure" value="{{ r.recap_heure }}"></div>
+            <div class="actions"><button type="submit">Enregistrer</button></div>
+          </form>
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Tests et actions</h2>
+        <div class="corps">
+          <form method="POST" action="{{ url_for('notifications.ecran') }}" class="actions" style="margin-top:0;">
+            <button type="submit" name="action" value="tester_courrier" class="mineur">Tester #{{ canal_courrier or '?' }}</button>
+            <button type="submit" name="action" value="tester_direction" class="mineur">Tester #{{ canal_direction or '?' }}</button>
+          </form>
+          <form method="POST" action="{{ url_for('notifications.ecran') }}" class="rang" style="align-items:flex-end;margin-top:12px;">
+            <input type="hidden" name="action" value="tester_prive">
+            <div class="champ" style="margin:0;"><label for="r_et">Message privé de test à</label>
+              <input type="text" id="r_et" name="email_test" placeholder="votre adresse (par défaut : vous)"></div>
+            <button type="submit" class="mineur">Envoyer</button>
+          </form>
+          <div class="actions">
+            <a class="lien-action" href="{{ url_for('notifications.ecran', apercu=1) }}#apercu">Aperçu du récapitulatif</a>
+            <form method="POST" action="{{ url_for('notifications.ecran') }}" style="display:inline;">
+              <button type="submit" name="action" value="recap" class="mineur" onclick="return confirm('Envoyer le récapitulatif maintenant ?');">Envoyer le récapitulatif</button></form>
+            {% if attente %}
+            <form method="POST" action="{{ url_for('notifications.ecran') }}" style="display:inline;">
+              <button type="submit" name="action" value="vider" class="mineur" onclick="return confirm('Envoyer maintenant les {{ attente|length }} message(s) en attente, même en plage de silence ?');">Tout envoyer maintenant</button></form>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+    </div>
+
+    {% if apercu_recap %}
+    <section class="bloc" id="apercu">
+      <h2>Aperçu du récapitulatif (destinataires : {{ dest_direction|join(', ') or 'aucun' }})</h2>
+      <div class="corps"><pre style="white-space:pre-wrap;font-family:inherit;margin:0;">{{ apercu_recap }}</pre></div>
+    </section>
+    {% endif %}
+
+    {% if attente %}
+    <section class="bloc">
+      <h2><span>En attente</span><span class="compte">{{ attente|length }}</span></h2>
+      <div class="corps">
+        <div class="table-defilante">
+        <table class="table-registre">
+          <thead><tr><th>Part à</th><th>Nature</th><th>Vers</th><th>Message</th></tr></thead>
+          <tbody>
+          {% for x in attente %}
+            <tr><td>{{ x.apres[:10]|date_courte }} {{ x.apres[11:16] }}</td><td>{{ natures_notif.get(x.nature, x.nature) }}</td>
+                <td>{{ x.dest if x.dest is string else x.dest|join(', ') }}</td><td>{{ x.titre }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
+    <section class="bloc">
+      <h2><span>Journal des envois</span><span class="compte">{{ journal|length }}</span></h2>
+      <div class="corps">
+        {% if journal %}
+        <div class="table-defilante">
+        <table class="table-registre">
+          <thead><tr><th>Le</th><th>Nature</th><th>Vers</th><th>Message</th><th>Résultat</th></tr></thead>
+          <tbody>
+          {% for j in journal %}
+            <tr>
+              <td>{{ j.le[:10]|date_courte }} {{ j.le[11:16] }}</td>
+              <td>{{ natures_notif.get(j.nature, j.nature) }}{% if j.urgent %} <span class="badge alerte">urgent</span>{% endif %}</td>
+              <td>{{ j.dest if j.dest is string else j.dest|join(', ') }}</td>
+              <td>{{ j.titre }}</td>
+              <td>{% if j.ok %}<span class="badge ok">envoyé</span>{% else %}<span class="badge alerte">échec</span>{% endif %}
+                <div class="aide" style="margin:0;">{{ j.detail }}</div></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="vide">Aucun envoi pour l'instant.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+</body>
+</html>
