@@ -88,7 +88,7 @@ def echanger_code(code):
 
     resp = requests.post(
         f"{ACCOUNTS_URL}/oauth/v2/token",
-        params={
+        data={
             "code": code,
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
@@ -137,7 +137,7 @@ def verifier():
     for mod in ("zoho_config", "zoho_connector"):
         sys.modules.pop(mod, None)
 
-    from zoho_config import SIGN_API, WORKDRIVE_API, WORKDRIVE_TEAM_ID
+    from zoho_config import SIGN_API, WORKDRIVE_API, WORKDRIVE_ROOT_ID
     from zoho_connector import ZohoConnector
 
     zc = ZohoConnector()
@@ -145,9 +145,9 @@ def verifier():
     entetes = {"Authorization": f"Zoho-oauthtoken {token}"}
     resultats = {}
 
-    # --- WorkDrive : c'est CE test qui manquait la derniere fois ---------
+    # --- WorkDrive : liste la racine GED, le meme appel que l'application --
     r = requests.get(
-        f"{WORKDRIVE_API}/teams/{WORKDRIVE_TEAM_ID}/folders",
+        f"{WORKDRIVE_API}/files/{WORKDRIVE_ROOT_ID}/files",
         headers=entetes,
         timeout=20,
     )
@@ -214,7 +214,8 @@ def main():
     print("\n" + "=" * 45)
     if tout_ok:
         print("TERMINE. Relance l'application :")
-        print("  ./venv/bin/python scripts/app_ged/app.py")
+        print("  sur le VPS : docker compose restart ged")
+        print("  sur le PC  : ./venv/bin/python scripts/app_ged/app.py")
     else:
         print("Une API reste en echec.")
         print("Ajuste SCOPES en haut de ce fichier, regenere un code")
