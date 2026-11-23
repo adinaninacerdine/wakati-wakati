@@ -74,32 +74,52 @@ def main():
         return
 
     z = ZohoConnector()
-    crees, erreurs = 0, 0
-    for code_ser, nom_ser in SERVICES.items():
-        besoin = [t for s, t in manquants if s == code_ser]
-        if not besoin:
-            continue
-        entree = folder_map["services"].get(code_ser)
-        if not entree:
-            ser_id = z.workdrive_find_or_create_folder(nom_ser, WORKDRIVE_ROOT_ID)
-            if not ser_id:
-                print(f"ERREUR : service {nom_ser} introuvable et non créé")
-                erreurs += 1
-                continue
-            entree = {"id": ser_id, "types": {}}
-            folder_map["services"][code_ser] = entree
-        for code_typ in besoin:
-            try:
-                typ_id = z.workdrive_find_or_create_folder(TYPES[code_typ], entree["id"])
-                entree.setdefault("types", {})[code_typ] = typ_id
-                crees += 1
-                print(f"  OK  {nom_ser} / {TYPES[code_typ]}")
-            except Exception as exc:  # noqa: BLE001
-                erreurs += 1
-                print(f"  KO  {nom_ser} / {TYPES[code_typ]} : {exc}")
+    # Vérifie l'accès Zoho AVANT de toucher à quoi que ce soit : un refresh
+    # token révoqué ferait échouer chaque dossier un par un.
+    try:
+        z._token()
+    except Exception as exc:  # noqa: BLE001
+        print(f"\nARRÊT : connexion Zoho impossible — {exc}")
+        print("Aucun dossier créé, folders_map.json inchangé.")
+        raise SystemExit(1)
 
-    MAP_FILE.write_text(json.dumps(folder_map, ensure_ascii=False, indent=4),
-                        encoding="utf-8")
+    crees, erreurs = 0, 0
+
+    def enregistrer():
+        MAP_FILE.write_text(json.dumps(folder_map, ensure_ascii=False, indent=4),
+                            encoding="utf-8")
+
+    try:
+        for code_ser, nom_ser in SERVICES.items():
+            besoin = [t for s, t in manquants if s == code_ser]
+            if not besoin:
+                continue
+            entree = folder_map["services"].get(code_ser)
+            if not entree:
+                ser_id = z.workdrive_find_or_create_folder(nom_ser, WORKDRIVE_ROOT_ID)
+                if not ser_id:
+                    print(f"ERREUR : service {nom_ser} introuvable et non créé")
+                    erreurs += 1
+                    continue
+                entree = {"id": ser_id, "types": {}}
+                folder_map["services"][code_ser] = entree
+                enregistrer()
+                print(f"  OK  {nom_ser} (dossier service)")
+            for code_typ in besoin:
+                try:
+                    typ_id = z.workdrive_find_or_create_folder(TYPES[code_typ], entree["id"])
+                    entree.setdefault("types", {})[code_typ] = typ_id
+                    enregistrer()  # chaque dossier créé est noté tout de suite
+                    crees += 1
+                    print(f"  OK  {nom_ser} / {TYPES[code_typ]}")
+                except Exception as exc:  # noqa: BLE001
+                    erreurs += 1
+                    print(f"  KO  {nom_ser} / {TYPES[code_typ]} : {exc}")
+                    if "Refresh token" in str(exc):
+                        raise
+    except Exception as exc:  # noqa: BLE001
+        print(f"\nARRÊT : {exc}")
+
     print(f"\nBilan : {crees} dossier(s) ajouté(s), {erreurs} erreur(s). "
           f"Mappage enregistré dans {MAP_FILE}")
 

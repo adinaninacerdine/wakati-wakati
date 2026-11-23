@@ -1,6 +1,10 @@
 """
-Configuration Zoho — SECRETS. NE JAMAIS COMMITER SUR GIT.
-Région datacenter : .com (US)
+zoho_connector.py — Accès WorkDrive / Sheet de la GED (région .com).
+Les secrets sont dans zoho_config.py (jamais commité).
+
+Les identifiants OAuth partent dans le CORPS de la requête, jamais dans l'URL :
+ainsi une erreur ou une trace (traceback, log) n'affiche ni le client_secret
+ni le refresh token.
 """
 import requests
 import time
@@ -49,16 +53,25 @@ class ZohoConnector:
                 pass
 
     def _refresh_access_token(self):
-        resp = requests.post(f'{ACCOUNTS_URL}/oauth/v2/token', params={
-            'refresh_token': REFRESH_TOKEN,
-            'client_id': CLIENT_ID,
-            'client_secret': CLIENT_SECRET,
-            'grant_type': 'refresh_token',
-        })
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = requests.post(f'{ACCOUNTS_URL}/oauth/v2/token', data={
+                'refresh_token': REFRESH_TOKEN,
+                'client_id': CLIENT_ID,
+                'client_secret': CLIENT_SECRET,
+                'grant_type': 'refresh_token',
+            }, timeout=30)
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Zoho injoignable ({type(exc).__name__})") from None
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {}
         if 'access_token' not in data:
-            raise RuntimeError(f"Echec refresh token : {data}")
+            erreur = data.get('error') or f"HTTP {resp.status_code}"
+            raise RuntimeError(
+                f"Refresh token Zoho refusé : {erreur}. "
+                "Si « invalid_code » : le REFRESH_TOKEN de zoho_config.py est "
+                "révoqué, regénère-le avec setup_main_token.py.")
         self.access_token = data['access_token']
         self.token_expiry = time.time() + data.get('expires_in', 3600)
         with open(TOKEN_CACHE, 'w') as f:
@@ -179,12 +192,12 @@ class ZohoConnector:
 
 
 def get_refresh_token(grant_code):
-    resp = requests.post(f'{ACCOUNTS_URL}/oauth/v2/token', params={
+    resp = requests.post(f'{ACCOUNTS_URL}/oauth/v2/token', data={
         'code': grant_code,
         'client_id': CLIENT_ID,
         'client_secret': CLIENT_SECRET,
         'grant_type': 'authorization_code',
-    })
+    }, timeout=30)
     data = resp.json()
     print(json.dumps(data, indent=2))
     if 'refresh_token' in data:
