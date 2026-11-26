@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Application de {{ c.nom }} — GED WAKATI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='ged.css') }}">
+<script src="{{ url_for('static', filename='ged.js') }}"></script>
+</head>
+<body>
+
+{% include '_barre.html' %}
+
+<div class="principal">
+
+  <header class="entete">
+    <h1>Application « Mes remises »</h1>
+    <div class="contexte">
+      <span class="badge {% if c.actif %}ok{% else %}alerte{% endif %}">{{ 'Active' if c.actif else 'Désactivée' }}</span>
+      &nbsp;<a class="lien-action" href="{{ url_for('remises.liste') }}#coursiers">Tous les coursiers</a>
+    </div>
+  </header>
+
+  <div class="contenu large">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="grille-edition">
+      <div>
+        <section class="bloc bordereau-imprimable">
+          <h2><span>{{ c.nom }}</span><span class="aide" style="margin:0;">{{ nb_a_remettre }} à remettre · {{ nb_remis }} remis cette semaine</span></h2>
+          <div class="corps">
+            {% if c.actif %}
+            <div class="entete-bordereau">
+              <div>
+                <p style="margin-top:0;"><strong>Installation sur le téléphone du coursier</strong></p>
+                <ol class="etapes-install">
+                  <li>Ouvrez l'appareil photo du téléphone et visez ce QR code, puis touchez le lien qui s'affiche.</li>
+                  <li>La page « Mes remises » s'ouvre. Touchez <strong>Installer sur ce téléphone</strong>
+                    (ou le menu ⋮ du navigateur, puis « Ajouter à l'écran d'accueil »).
+                    Sur iPhone : bouton Partager, puis « Sur l'écran d'accueil ».</li>
+                  <li>L'icône <strong>WAKATI Remises</strong> apparaît sur l'écran d'accueil.
+                    Autorisez la localisation et l'appareil photo à la première remise.</li>
+                </ol>
+                <p class="aide">Aucun compte ni mot de passe : ce QR code est la clé personnelle de {{ c.nom }}.
+                  Ne l'affichez pas et ne le transmettez à personne d'autre.</p>
+              </div>
+              {% if qr %}
+              <figure class="qr-remise">
+                {{ qr|safe }}
+                <figcaption>À scanner une seule fois<br>avec le téléphone de {{ c.nom }}</figcaption>
+              </figure>
+              {% endif %}
+            </div>
+
+            <div class="ecran-seul" style="margin-top:16px;">
+              <label for="lien_app">Lien personnel</label>
+              <div class="rang" style="gap:8px;align-items:center;">
+                <input type="text" id="lien_app" value="{{ lien }}" readonly style="flex:3;">
+                <div style="flex:0;min-width:auto;display:flex;gap:8px;">
+                  <button type="button" class="mineur" onclick="copierLienApp()">Copier</button>
+                </div>
+              </div>
+              <p class="aide">À défaut de QR code, envoyez ce lien au coursier par un canal privé (message Cliq direct, SMS).</p>
+            </div>
+            {% else %}
+            <p class="vide">Application désactivée : le lien de {{ c.nom }} ne s'ouvre plus.</p>
+            {% endif %}
+          </div>
+        </section>
+      </div>
+
+      <div>
+        <section class="bloc">
+          <h2>Suivi</h2>
+          <div class="corps">
+            <div><span class="etiquette">Dernière ouverture</span> {{ vu or 'jamais — application pas encore installée' }}</div>
+            {% if c.telephone %}<div style="margin-top:6px;"><span class="etiquette">Téléphone</span> {{ c.telephone }}</div>{% endif %}
+            {% if c.email %}<div style="margin-top:6px;"><span class="etiquette">E-mail Cliq</span> {{ c.email }}</div>{% endif %}
+          </div>
+        </section>
+
+        <section class="bloc">
+          <h2>Modifier</h2>
+          <div class="corps">
+            <form method="POST" action="{{ url_for('remises.enregistrer_coursier') }}">
+              <input type="hidden" name="id" value="{{ c.id }}">
+              <div class="champ"><label for="c_nom">Nom</label><input type="text" id="c_nom" name="nom" value="{{ c.nom }}" required maxlength="80"></div>
+              <div class="champ"><label for="c_tel">Téléphone</label><input type="text" id="c_tel" name="telephone" value="{{ c.telephone or '' }}" maxlength="30"></div>
+              <div class="champ"><label for="c_mail">E-mail Cliq (facultatif)</label><input type="email" id="c_mail" name="email" value="{{ c.email or '' }}">
+                <div class="aide">S'il est renseigné, le coursier reçoit un message privé à chaque courrier confié.</div></div>
+              <button type="submit" class="mineur">Enregistrer</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="bloc">
+          <h2>Sécurité</h2>
+          <div class="corps">
+            <form method="POST" action="{{ url_for('remises.action_coursier', cid=c.id, action='regenerer') }}"
+                  onsubmit="return confirm('Créer un nouveau lien ? L\'application déjà installée cessera de fonctionner et devra être réinstallée avec le nouveau QR code.');">
+              <button type="submit" class="mineur">Téléphone perdu ou changé : nouveau lien</button></form>
+            <form method="POST" action="{{ url_for('remises.action_coursier', cid=c.id, action='desactiver' if c.actif else 'activer') }}" style="margin-top:10px;">
+              <button type="submit" class="discret">{{ 'Désactiver ce coursier' if c.actif else 'Réactiver ce coursier' }}</button></form>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="pied">
+      Huri Money SA &mdash; WAKATI Mobile Money &nbsp;|&nbsp; Union des Comores
+    </div>
+  </div>
+</div>
+
+<script>
+function copierLienApp() {
+  var c = document.getElementById('lien_app');
+  c.select();
+  (navigator.clipboard ? navigator.clipboard.writeText(c.value) : Promise.reject())
+    .catch(function () { document.execCommand('copy'); });
+}
+</script>
+</body>
+</html>

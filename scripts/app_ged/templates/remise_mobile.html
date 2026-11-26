@@ -6,6 +6,10 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#03224C">
+{% if c_jeton %}
+<link rel="manifest" href="{{ url_for('remise_public.manifeste', jeton=c_jeton) }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icones/remises-180.png') }}">
+{% endif %}
 <title>Remise de courrier — WAKATI</title>
 <style>
   :root {
@@ -70,6 +74,10 @@
   .etat.ok { background: var(--vert-fond); border-color: #A9D9BF; }
   .etat h2 { color: var(--navy); font-weight: 700; font-size: 19px; margin: 10px 0 6px; }
   footer { text-align: center; color: var(--doux); font-size: 12px; padding: 10px 16px 30px; }
+  header a.retour { display: inline-block; color: #fff; text-decoration: none; font-size: 15px;
+    border: 1px solid rgba(255,255,255,.5); border-radius: 8px; padding: 7px 12px; margin-top: 10px; }
+  a.bouton-retour { display: block; text-align: center; text-decoration: none; margin-top: 16px; padding: 14px;
+    border-radius: 10px; font-size: 17px; font-weight: 700; color: #fff; background: var(--navy); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -78,6 +86,7 @@
   <div class="marque">W A K A T I</div>
   <div class="slogan">NDUWO UWO</div>
   <h1>Remise de courrier</h1>
+  {% if c_jeton %}<a class="retour" href="{{ url_for('remise_public.app_coursier', jeton=c_jeton) }}">‹ Mes remises</a>{% endif %}
 </header>
 
 <main>
@@ -101,7 +110,8 @@
     <h2>Courrier remis</h2>
     <p>Remis à <strong>{{ r.remise.nom }}</strong>{% if r.remise.fonction %} ({{ r.remise.fonction }}){% endif %}<br>
        le {{ r.remis_affiche }}.</p>
-    <p class="meta">L'accusé de remise est enregistré dans la GED. Vous pouvez fermer cette page.</p></div>
+    <p class="meta">L'accusé de remise est enregistré dans la GED.{% if not c_jeton %} Vous pouvez fermer cette page.{% endif %}</p>
+    {% if c_jeton %}<a class="bouton-retour" href="{{ url_for('remise_public.app_coursier', jeton=c_jeton) }}">Retour à mes remises</a>{% endif %}</div>
   <div class="carte"><div class="objet">{{ r.objet }}</div>
     {% if r.reference %}<div class="meta">Réf. {{ r.reference }}</div>{% endif %}</div>
 
@@ -153,8 +163,13 @@
       <img id="r_apercu" alt="Aperçu de la photo">
     </div>
 
+    {% if app_coursier %}
+    <input type="hidden" name="c" value="{{ c_jeton }}">
+    <input type="hidden" name="coursier" value="{{ app_coursier.nom }}">
+    {% else %}
     <label for="r_coursier">Votre nom (coursier) <span class="opt">— facultatif</span></label>
     <input type="text" id="r_coursier" name="coursier" value="{{ (saisie or {}).get('coursier', r.coursier or '') }}">
+    {% endif %}
 
     {% for n in ['lat', 'lon', 'precision', 'gps_statut'] %}<input type="hidden" name="{{ n }}" class="gps-{{ n }}">{% endfor %}
     <div class="gps" role="status">Position : recherche…</div>
@@ -183,8 +198,13 @@
       <img id="e_apercu" alt="Aperçu de la photo">
     </div>
 
+    {% if app_coursier %}
+    <input type="hidden" name="c" value="{{ c_jeton }}">
+    <input type="hidden" name="coursier" value="{{ app_coursier.nom }}">
+    {% else %}
     <label for="e_coursier">Votre nom (coursier) <span class="opt">— facultatif</span></label>
     <input type="text" id="e_coursier" name="coursier" value="{{ (saisie or {}).get('coursier', r.coursier or '') }}">
+    {% endif %}
 
     {% for n in ['lat', 'lon', 'precision', 'gps_statut'] %}<input type="hidden" name="{{ n }}" class="gps-{{ n }}">{% endfor %}
     <div class="gps" role="status">Position : recherche…</div>

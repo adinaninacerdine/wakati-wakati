@@ -65,6 +65,16 @@
                   <button type="button" class="mineur" onclick="window.print()">Imprimer</button>
                 </div>
               </div>
+              {% if coursiers %}
+              <form method="POST" action="{{ url_for('remises.affecter', rid=r.id) }}" class="rang" style="gap:8px;align-items:flex-end;margin-top:12px;">
+                <div class="champ" style="margin:0;"><label for="aff_coursier">Confié à (application « Mes remises »)</label>
+                  <select id="aff_coursier" name="coursier_id">
+                    <option value="">— Personne : visible de tous les coursiers —</option>
+                    {% for c in coursiers %}<option value="{{ c.id }}" {% if r.coursier_id == c.id %}selected{% endif %}>{{ c.nom }}</option>{% endfor %}
+                  </select></div>
+                <button type="submit" class="mineur" style="flex:0;">Confier</button>
+              </form>
+              {% endif %}
               <p class="aide">Ce lien ouvre la page de remise sans compte : ne le transmettez qu'au coursier.
                 Il expire le {{ r.expire_le|date_courte }} et se ferme dès la remise signée.</p>
             </div>

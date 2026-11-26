@@ -16,12 +16,19 @@ Money), l'archive dans WorkDrive à côté du courrier, l'inscrit dans
 l'historique du projet et dans la frise du tableau de bord, et prévient
 #ged-notifications dans Cliq.
 
-Deux blueprints :
-  bp_remises        /remises/...  écrans GED (connexion requise)
-  bp_remise_public  /r/<jeton>    page mobile du coursier (jeton secret)
+APPLICATION « MES REMISES » : chaque coursier (ici le logisticien) a un lien
+personnel /r/c/<jeton> qui s'installe sur l'écran d'accueil de son téléphone
+(icône WAKATI, plein écran, sans compte Zoho). Il y voit ses courriers à
+remettre et ceux déjà remis, et ouvre chaque bordereau d'un geste. Le lien se
+régénère depuis la GED si le téléphone est perdu.
 
-Données : courrier/remises.json + courrier/remises/<id>/ (signature,
-photos, accusé PDF).
+Deux blueprints :
+  bp_remises        /remises/...   écrans GED (connexion requise)
+  bp_remise_public  /r/<jeton>     page mobile d'un bordereau (jeton secret)
+                    /r/c/<jeton>   application du coursier (jeton personnel)
+
+Données : courrier/remises.json, courrier/remises/coursiers.json,
+courrier/remises/<id>/ (signature, photos, accusé PDF).
 
 Évolution prévue (deuxième temps) : le même mécanisme dans l'autre sens,
 pour remettre au déposant d'un courrier entrant un récépissé signé.
@@ -48,6 +55,7 @@ bp_remise_public = Blueprint("remise_public", __name__, url_prefix="/r")
 
 F_REMISES = C.F_REMISES
 DOSSIER = C.DONNEES / "remises"
+F_COURSIERS = DOSSIER / "coursiers.json"
 
 VALIDITE_JOURS = 30            # au-delà, le lien du coursier ne s'ouvre plus
 TAILLE_MAX = 25 * 1024 * 1024  # corps de requête accepté (photos comprises)
@@ -108,6 +116,92 @@ def expire(r):
         return False
 
 
+# ---------------------------------------------------------------------------
+# Coursiers et application « Mes remises »
+# ---------------------------------------------------------------------------
+def coursiers(actifs_seulement=False):
+    liste = list(C._lire(F_COURSIERS, {}).values())
+    if actifs_seulement:
+        liste = [c for c in liste if c.get("actif", True)]
+    return sorted(liste, key=lambda c: c.get("nom", "").lower())
+
+
+def coursier(cid):
+    return C._lire(F_COURSIERS, {}).get(cid or "")
+
+
+def coursier_par_jeton(jeton):
+    """Coursier actif correspondant au jeton personnel (temps constant)."""
+    if not jeton or len(jeton) < 20:
+        return None
+    for c in C._lire(F_COURSIERS, {}).values():
+        if c.get("actif", True) and hmac.compare_digest(str(c.get("jeton", "")), str(jeton)):
+            return c
+    return None
+
+
+def _sauver_coursier(c):
+    with C._verrou:
+        DOSSIER.mkdir(parents=True, exist_ok=True)
+        tous = C._lire(F_COURSIERS, {})
+        tous[c["id"]] = c
+        C._ecrire(F_COURSIERS, tous)
+
+
+def _trouver_coursier(nom):
+    """Coursier enregistré pour un nom saisi. Sans nom et avec un seul
+    coursier actif, c'est lui : le bordereau arrive seul dans son application."""
+    actifs = coursiers(actifs_seulement=True)
+    cle = C._normaliser(nom or "")
+    if cle:
+        for c in actifs:
+            if C._normaliser(c.get("nom", "")) == cle:
+                return c
+        return None
+    return actifs[0] if len(actifs) == 1 else None
+
+
+def remises_du_coursier(c):
+    """(à remettre, remis depuis 7 jours) pour l'application. Les bordereaux
+    sans coursier désigné sont proposés à tous."""
+    a_remettre, remis = [], []
+    limite = (datetime.now() - timedelta(days=7)).isoformat()
+    for r in remises().values():
+        if r.get("statut") == "en_cours" and not expire(r) \
+                and r.get("coursier_id") in (c["id"], "", None):
+            a_remettre.append(r)
+        elif r.get("statut") == "remis" and (r.get("remise") or {}).get("le", "") >= limite \
+                and (r.get("coursier_id") == c["id"]
+                     or (r.get("remise") or {}).get("coursier_id") == c["id"]):
+            remis.append(r)
+    a_remettre.sort(key=lambda r: r.get("cree_le", ""))
+    remis.sort(key=lambda r: r["remise"]["le"], reverse=True)
+    return a_remettre, remis
+
+
+def _url_coursier(c):
+    schema = request.headers.get("X-Forwarded-Proto", request.scheme)
+    hote = request.headers.get("X-Forwarded-Host", request.host)
+    return f"{schema}://{hote}{url_for('remise_public.app_coursier', jeton=c['jeton'])}"
+
+
+def _prevenir_coursier(r):
+    """Message privé au coursier désigné (s'il a une adresse Cliq)."""
+    c = coursier(r.get("coursier_id"))
+    if not c or not c.get("email"):
+        return
+    try:
+        import routeur  # noqa: PLC0415
+        dest = r.get("organisation") or (r.get("destinataire") or [""])[0]
+        routeur.personne(c["email"], f"Courrier à remettre : {r.get('objet', '')}",
+                         f"📦 Nouveau courrier à remettre : {r.get('objet', '')}\n"
+                         f"Destinataire : {dest}\n"
+                         + (f"Consigne : {r['note']}\n" if r.get("note") else "")
+                         + f"{_url_coursier(c)}", nature="action")
+    except Exception:  # noqa: BLE001
+        logging.error("Notification du coursier impossible", exc_info=True)
+
+
 def _dossier(rid):
     d = DOSSIER / rid
     d.mkdir(parents=True, exist_ok=True)
@@ -134,8 +228,10 @@ def qr_svg(texte):
     except ImportError:
         return ""
     try:
+        # omitsize : un viewBox à la place de la taille fixe, pour que le QR
+        # s'adapte au cadre au lieu d'être rogné quand le lien est long.
         return segno.make(texte, error="m").svg_inline(
-            scale=6, border=2, dark="#03224C", light="#FFFFFF")
+            scale=6, border=3, dark="#03224C", light="#FFFFFF", omitsize=True)
     except Exception:  # noqa: BLE001
         logging.error("QR code impossible", exc_info=True)
         return ""
@@ -202,11 +298,15 @@ def creer_libre(objet, reference, destinataire, adresse, coursier="", note="",
 
 def _creer(champs, coursier, note):
     rid = C._id_court("REM")
+    designe = _trouver_coursier(coursier)
+    if designe:
+        coursier = designe["nom"]
     r = {
         "id": rid,
         "jeton": secrets.token_urlsafe(24),
         **champs,
         "coursier": coursier.strip(),
+        "coursier_id": designe["id"] if designe else "",
         "note": note.strip(),
         "statut": "en_cours",
         "cree_le": C._maintenant(),
@@ -225,6 +325,7 @@ def _creer(champs, coursier, note):
             _historiser_projet(r["reponse_ref"], "Bordereau de remise créé",
                                f"{rid}" + (f" — coursier : {r['coursier']}" if r["coursier"] else ""),
                                C.utilisateur_courant())
+    _prevenir_coursier(r)
     return r
 
 
@@ -488,16 +589,20 @@ def enregistrer_remise(r, f, fichiers):
         (dossier / "photo_remise.jpg").write_bytes(photo)
         photos.append("photo_remise.jpg")
 
+    app = coursier_par_jeton(f.get("c"))
     rm = {
         "le": C._maintenant(),
         "nom": nom[:120],
         "fonction": fonction[:120],
         "coursier": (f.get("coursier") or "").strip()[:80],
+        "coursier_id": "",
         "photos": photos,
         "gps": _gps(f),
         "ip": _ip(),
         "appareil": (request.headers.get("User-Agent") or "")[:200],
     }
+    if app:   # remise faite depuis l'application : le coursier est certain
+        rm["coursier"], rm["coursier_id"] = app["nom"], app["id"]
     with C._verrou:
         toutes = remises()
         courant = toutes.get(r["id"])
@@ -505,8 +610,10 @@ def enregistrer_remise(r, f, fichiers):
             return "Ce bordereau n'est plus ouvert."
         courant["statut"] = "remis"
         courant["remise"] = rm
-        if rm["coursier"] and not courant.get("coursier"):
+        if rm["coursier"] and (app or not courant.get("coursier")):
             courant["coursier"] = rm["coursier"]
+        if app:
+            courant["coursier_id"] = app["id"]
         _sauver(toutes)
         r = courant
 
@@ -554,9 +661,10 @@ def enregistrer_echec(r, f, fichiers):
         if photo:
             nom_photo = f"photo_echec_{n}.jpg"
             (_dossier(r["id"]) / nom_photo).write_bytes(photo)
+        app = coursier_par_jeton(f.get("c"))
         tv = {"le": C._maintenant(), "motif": motif, "commentaire": commentaire,
               "photo": nom_photo, "gps": _gps(f), "ip": _ip(),
-              "coursier": (f.get("coursier") or "").strip()[:80]}
+              "coursier": app["nom"] if app else (f.get("coursier") or "").strip()[:80]}
         courant.setdefault("tentatives", []).append(tv)
         _sauver(toutes)
         r = courant
@@ -614,9 +722,85 @@ def liste():
     toutes = sorted(remises().values(), key=lambda r: r.get("cree_le", ""), reverse=True)
     en_cours = [_affichee(r) for r in toutes if r.get("statut") == "en_cours"]
     remis = [_affichee(r) for r in toutes if r.get("statut") == "remis"][:30]
+    charge = {}
+    for r in toutes:
+        if r.get("statut") == "en_cours" and r.get("coursier_id"):
+            charge[r["coursier_id"]] = charge.get(r["coursier_id"], 0) + 1
     return render_template("remises.html", page="remises", en_cours=en_cours,
                            remis=remis, a_remettre=_sans_bordereau(),
-                           motifs=MOTIFS_ECHEC, **C._contexte_commun())
+                           motifs=MOTIFS_ECHEC, coursiers=coursiers(), charge=charge,
+                           **C._contexte_commun())
+
+
+@bp_remises.route("/coursiers", methods=["POST"])
+def enregistrer_coursier():
+    if not C.est_responsable_ged():
+        abort(403)
+    f = request.form
+    nom = f.get("nom", "").strip()[:80]
+    if len(nom) < 2:
+        flash("Le nom du coursier est obligatoire.", "error")
+        return redirect(url_for("remises.liste"))
+    c = coursier(f.get("id")) or {"id": C._id_court("CRS"), "jeton": secrets.token_urlsafe(24),
+                                  "cree_le": C._maintenant(), "actif": True}
+    c.update({"nom": nom, "telephone": f.get("telephone", "").strip()[:30],
+              "email": f.get("email", "").strip().lower()[:120]})
+    _sauver_coursier(c)
+    flash(f"{nom} enregistré. Installez l'application sur son téléphone avec le QR code.", "success")
+    return redirect(url_for("remises.fiche_coursier", cid=c["id"]))
+
+
+@bp_remises.route("/coursiers/<cid>")
+def fiche_coursier(cid):
+    c = coursier(cid)
+    if not c or not C.est_responsable_ged():
+        abort(404)
+    lien = _url_coursier(c)
+    a_remettre, remis = remises_du_coursier(c)
+    return render_template("remise_coursier.html", page="remises", c=c, lien=lien,
+                           qr=qr_svg(lien) if c.get("actif", True) else "",
+                           nb_a_remettre=len(a_remettre), nb_remis=len(remis),
+                           vu=_date_heure_longue(c.get("vu_le")) if c.get("vu_le") else "",
+                           **C._contexte_commun())
+
+
+@bp_remises.route("/coursiers/<cid>/<action>", methods=["POST"])
+def action_coursier(cid, action):
+    c = coursier(cid)
+    if not c or not C.est_responsable_ged():
+        abort(404)
+    if action == "regenerer":
+        c["jeton"] = secrets.token_urlsafe(24)
+        c["vu_le"] = ""
+        flash("Nouveau lien créé : l'ancien ne s'ouvre plus. Réinstallez l'application "
+              "sur le téléphone avec le nouveau QR code.", "success")
+    elif action == "desactiver":
+        c["actif"] = False
+        flash(f"{c['nom']} désactivé : son application ne s'ouvre plus.", "success")
+    elif action == "activer":
+        c["actif"] = True
+        flash(f"{c['nom']} réactivé.", "success")
+    else:
+        abort(404)
+    _sauver_coursier(c)
+    return redirect(url_for("remises.fiche_coursier", cid=cid))
+
+
+@bp_remises.route("/<rid>/affecter", methods=["POST"])
+def affecter(rid):
+    c = coursier(request.form.get("coursier_id"))
+    with C._verrou:
+        toutes = remises()
+        r = toutes.get(rid)
+        if not r or r.get("statut") != "en_cours":
+            abort(404)
+        r["coursier_id"] = c["id"] if c else ""
+        r["coursier"] = c["nom"] if c else ""
+        _sauver(toutes)
+    if c:
+        _prevenir_coursier(r)
+    flash(f"Bordereau confié à {c['nom']}." if c else "Bordereau sans coursier désigné.", "success")
+    return redirect(url_for("remises.detail", rid=rid))
 
 
 @bp_remises.route("/creer", methods=["POST"])
@@ -645,6 +829,7 @@ def detail(rid):
     lien = _url_publique(r)
     return render_template("remise_detail.html", page="remises", r=_affichee(r),
                            lien=lien, qr=qr_svg(lien) if r.get("statut") == "en_cours" else "",
+                           coursiers=coursiers(actifs_seulement=True),
                            **C._contexte_commun())
 
 
@@ -734,45 +919,109 @@ def _pas_de_cache(resp):
     return resp
 
 
+def _retour_app(valeur):
+    """(jeton personnel, coursier) si la page est ouverte depuis l'application."""
+    c = coursier_par_jeton(valeur)
+    return (valeur, c) if c else ("", None)
+
+
+_ICONES = {192: "remises-192.png", 512: "remises-512.png", 180: "remises-180.png"}
+
+
+@bp_remise_public.route("/c/<jeton>")
+def app_coursier(jeton):
+    """Application « Mes remises » du coursier."""
+    c = coursier_par_jeton(jeton)
+    if not c:
+        return render_template("remise_app.html", c=None), 404
+    c["vu_le"] = C._maintenant()
+    _sauver_coursier(c)
+    a_remettre, remis = remises_du_coursier(c)
+    aujourdhui = datetime.now().strftime("%Y-%m-%d")
+    return render_template("remise_app.html", c=c, jeton=jeton,
+                           a_remettre=[_affichee(r) for r in a_remettre],
+                           remis=[_affichee(r) for r in remis],
+                           remis_jour=sum(1 for r in remis if r["remise"]["le"][:10] == aujourdhui),
+                           message=request.args.get("m", ""))
+
+
+@bp_remise_public.route("/sw.js")
+def service_worker():
+    """Service worker minimal : rend l'application installable sur tous les
+    Chrome Android. Il ne met RIEN en cache (pages à lien secret)."""
+    js = ("self.addEventListener('install',function(e){self.skipWaiting();});"
+          "self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});"
+          "self.addEventListener('fetch',function(e){});")
+    return js, 200, {"Content-Type": "application/javascript", "Service-Worker-Allowed": "/r/"}
+
+
+@bp_remise_public.route("/c/<jeton>/manifest.webmanifest")
+def manifeste(jeton):
+    """Manifeste d'installation : l'icône ouvre directement la page personnelle."""
+    if not coursier_par_jeton(jeton):
+        abort(404)
+    depart = url_for("remise_public.app_coursier", jeton=jeton)
+    icone = lambda t: url_for("static", filename=f"icones/{_ICONES[t]}")  # noqa: E731
+    return {
+        "name": "WAKATI Remises", "short_name": "Remises",
+        "description": "Remise des courriers Huri Money avec accusé signé",
+        "start_url": depart, "scope": "/r/", "display": "standalone",
+        "orientation": "portrait", "lang": "fr",
+        "background_color": "#03224C", "theme_color": "#03224C",
+        "icons": [
+            {"src": icone(192), "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": icone(512), "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    }, 200, {"Content-Type": "application/manifest+json"}
+
+
 @bp_remise_public.route("/<jeton>")
 def page(jeton):
     r, etat = _ouvert(jeton)
+    c_jeton, c = _retour_app(request.args.get("c"))
     if etat == "inconnu":
         return render_template("remise_mobile.html", etat="inconnu", r=None), 404
     return render_template("remise_mobile.html", etat=etat, r=_affichee(r),
-                           motifs=MOTIFS_ECHEC, jeton=jeton,
+                           motifs=MOTIFS_ECHEC, jeton=jeton, c_jeton=c_jeton, app_coursier=c,
                            message=request.args.get("m", ""))
 
 
 @bp_remise_public.route("/<jeton>/remettre", methods=["POST"])
 def remettre(jeton):
+    c_jeton, c = _retour_app(request.form.get("c") or request.args.get("c"))
+    suite = {"c": c_jeton} if c_jeton else {}
     if (request.content_length or 0) > TAILLE_MAX:
         return redirect(url_for("remise_public.page", jeton=jeton,
-                                m="La photo est trop lourde. Reprenez-la."))
+                                m="La photo est trop lourde. Reprenez-la.", **suite))
     r, etat = _ouvert(jeton)
     if etat:
-        return redirect(url_for("remise_public.page", jeton=jeton))
+        return redirect(url_for("remise_public.page", jeton=jeton, **suite))
     err = enregistrer_remise(r, request.form, request.files)
     if err:
         return render_template("remise_mobile.html", etat="", r=_affichee(r),
                                motifs=MOTIFS_ECHEC, jeton=jeton, erreur=err,
-                               saisie=request.form), 400
-    return redirect(url_for("remise_public.page", jeton=jeton))
+                               c_jeton=c_jeton, app_coursier=c, saisie=request.form), 400
+    return redirect(url_for("remise_public.page", jeton=jeton, **suite))
 
 
 @bp_remise_public.route("/<jeton>/echec", methods=["POST"])
 def echec(jeton):
+    c_jeton, c = _retour_app(request.form.get("c") or request.args.get("c"))
+    suite = {"c": c_jeton} if c_jeton else {}
     if (request.content_length or 0) > TAILLE_MAX:
         return redirect(url_for("remise_public.page", jeton=jeton,
-                                m="La photo est trop lourde. Reprenez-la."))
+                                m="La photo est trop lourde. Reprenez-la.", **suite))
     r, etat = _ouvert(jeton)
     if etat:
-        return redirect(url_for("remise_public.page", jeton=jeton))
+        return redirect(url_for("remise_public.page", jeton=jeton, **suite))
     err = enregistrer_echec(r, request.form, request.files)
     if err:
         return render_template("remise_mobile.html", etat="", r=_affichee(r),
-                               motifs=MOTIFS_ECHEC, jeton=jeton, erreur=err,
-                               onglet="echec", saisie=request.form), 400
+                               motifs=MOTIFS_ECHEC, jeton=jeton, erreur=err, onglet="echec",
+                               c_jeton=c_jeton, app_coursier=c, saisie=request.form), 400
+    if c_jeton:   # retour à la liste : le courrier y reste, marqué d'une tentative
+        return redirect(url_for("remise_public.app_coursier", jeton=c_jeton,
+                                m="Échec enregistré. Le courrier reste à remettre."))
     return redirect(url_for("remise_public.page", jeton=jeton,
                             m="Échec enregistré. Le bordereau reste ouvert pour une nouvelle tentative."))
 
@@ -790,6 +1039,9 @@ def init_remise(app, protection=None, archiver_annexe=None):
             if nom.startswith("remises."):
                 app.view_functions[nom] = protection(vue)
     DOSSIER.mkdir(parents=True, exist_ok=True)
+    # Liste des coursiers pour les formulaires de création (datalist)
+    app.jinja_env.globals["coursiers_remise"] = lambda: coursiers(actifs_seulement=True)
     n = sum(1 for r in remises().values() if r.get("statut") == "en_cours")
     print(f"[REMISE] Module actif — {n} bordereau(x) à remettre, "
+          f"{len(coursiers(actifs_seulement=True))} coursier(s), "
           f"QR {'disponible' if qr_svg('test') else 'indisponible (installer segno)'}")

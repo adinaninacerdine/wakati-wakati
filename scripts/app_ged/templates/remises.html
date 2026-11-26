@@ -75,7 +75,7 @@
               <td>
                 <form method="POST" action="{{ url_for('remises.creer') }}" class="rang" style="gap:8px;align-items:center;">
                   <input type="hidden" name="ref" value="{{ p.ref }}">
-                  <input type="text" name="coursier" placeholder="Coursier (facultatif)" style="max-width:190px;" aria-label="Coursier">
+                  <input type="text" name="coursier" list="liste_coursiers" placeholder="{{ coursiers|selectattr('actif')|map(attribute='nom')|first if (coursiers|selectattr('actif')|list|length) == 1 else 'Coursier (facultatif)' }}" style="max-width:190px;" aria-label="Coursier">
                   <button type="submit" class="mineur">Créer</button>
                 </form>
               </td>
@@ -114,13 +114,58 @@
               <div class="champ"><label for="l_nom">Nom du fichier archivé (facultatif)</label>
                 <input type="text" id="l_nom" name="nom_archive" placeholder="HM26-…pdf"></div>
               <div class="champ"><label for="l_cou">Coursier</label>
-                <input type="text" id="l_cou" name="coursier"></div>
+                <input type="text" id="l_cou" name="coursier" list="liste_coursiers"></div>
             </div>
             <div class="champ"><label for="l_note">Consigne pour le coursier</label>
               <input type="text" id="l_note" name="note" placeholder="Remettre au secrétariat du DG, 2e étage"></div>
             <button type="submit">Créer le bordereau</button>
           </form>
         </details>
+      </div>
+    </section>
+
+    <datalist id="liste_coursiers">
+      {% for c in coursiers if c.actif %}<option value="{{ c.nom }}">{% endfor %}
+    </datalist>
+
+    <section class="bloc" id="coursiers">
+      <h2><span>Coursiers et application mobile</span>{% if coursiers %}<span class="compte">{{ coursiers|selectattr('actif')|list|length }}</span>{% endif %}</h2>
+      <div class="corps">
+        {% if coursiers %}
+        <div class="table-defilante">
+        <table class="table-registre">
+          <thead><tr><th>Coursier</th><th>Contact</th><th>À remettre</th><th>Application</th><th></th></tr></thead>
+          <tbody>
+          {% for c in coursiers %}
+            <tr {% if not c.actif %}style="opacity:.55;"{% endif %}>
+              <td><strong>{{ c.nom }}</strong>{% if not c.actif %} <span class="badge">désactivé</span>{% endif %}</td>
+              <td>{{ c.telephone or '—' }}{% if c.email %}<div class="aide" style="margin:0;">{{ c.email }}</div>{% endif %}</td>
+              <td>{{ charge.get(c.id, 0) }}</td>
+              <td>{% if c.vu_le %}<span class="badge ok">ouverte</span><div class="aide" style="margin:0;">le {{ c.vu_le[:10]|date_courte }} à {{ c.vu_le[11:16] }}</div>
+                  {% else %}<span class="badge">pas encore installée</span>{% endif %}</td>
+              <td>{% if responsable %}<a class="lien-action" href="{{ url_for('remises.fiche_coursier', cid=c.id) }}">QR d'installation</a>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="vide">Aucun coursier enregistré. Ajoutez le logisticien pour installer l'application « Mes remises » sur son téléphone.</p>
+        {% endif %}
+        {% if responsable %}
+        <details {% if not coursiers %}open{% endif %} style="margin-top:12px;">
+          <summary>Ajouter un coursier</summary>
+          <form method="POST" action="{{ url_for('remises.enregistrer_coursier') }}" style="margin-top:14px;">
+            <div class="rang">
+              <div class="champ"><label for="c_nom">Nom</label><input type="text" id="c_nom" name="nom" required maxlength="80"></div>
+              <div class="champ"><label for="c_tel">Téléphone</label><input type="text" id="c_tel" name="telephone" maxlength="30"></div>
+              <div class="champ"><label for="c_mail">E-mail Cliq (facultatif)</label><input type="email" id="c_mail" name="email" placeholder="pour le prévenir d'un nouveau courrier"></div>
+            </div>
+            <button type="submit">Enregistrer et afficher le QR d'installation</button>
+          </form>
+        </details>
+        {% endif %}
+        <p class="aide">Avec un seul coursier actif, chaque nouveau bordereau lui est confié automatiquement et apparaît dans son application.</p>
       </div>
     </section>
 

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#03224C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Remises">
+{% if c %}
+<link rel="manifest" href="{{ url_for('remise_public.manifeste', jeton=jeton) }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icones/remises-180.png') }}">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icones/remises-192.png') }}">
+{% endif %}
+<title>Mes remises — WAKATI</title>
+<style>
+  :root {
+    --navy: #03224C; --rouge: #E60E06; --fond: #F2F5F9; --surface: #FFFFFF;
+    --texte: #1B2733; --doux: #5B6B7F; --bord: #C9D6E5; --vert: #1E7A4C; --vert-fond: #E8F5EE;
+    --rouge-fond: #FDECEB;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--fond); color: var(--texte);
+    font-family: Calibri, "Segoe UI", Roboto, Arial, sans-serif; font-size: 16px; }
+  header { background: var(--navy); color: #fff; padding: 14px 16px 16px;
+    padding-top: calc(14px + env(safe-area-inset-top)); }
+  header .marque { letter-spacing: 6px; font-weight: 700; font-size: 15px; }
+  header .slogan { color: var(--rouge); font-size: 11px; letter-spacing: 3px; margin-top: 2px; }
+  header .ligne { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 10px; }
+  header h1 { font-weight: 400; font-size: 22px; margin: 0; }
+  header .qui { font-size: 13px; opacity: .85; }
+  header button { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.5);
+    border-radius: 8px; padding: 8px 12px; font-size: 14px; font-family: inherit; white-space: nowrap; }
+  main { padding: 16px; max-width: 560px; margin: 0 auto 40px; }
+  .compteurs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .compteur { background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; padding: 12px 14px; }
+  .compteur .n { font-size: 30px; font-weight: 700; color: var(--navy); line-height: 1; }
+  .compteur .l { font-size: 13px; color: var(--doux); margin-top: 4px; }
+  .compteur.fait .n { color: var(--vert); }
+  h2 { font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--doux);
+    margin: 20px 2px 8px; font-weight: 700; }
+  a.carte { display: block; background: var(--surface); border: 1px solid var(--bord); border-radius: 10px;
+    padding: 14px 44px 14px 16px; margin-bottom: 10px; color: inherit; text-decoration: none; position: relative; }
+  a.carte::after { content: "›"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+    font-size: 30px; color: var(--navy); }
+  a.carte:active { background: #EAF0F7; }
+  .objet { font-weight: 700; font-size: 17px; color: var(--navy); line-height: 1.3; }
+  .dest { margin-top: 6px; font-size: 15px; line-height: 1.35; }
+  .meta { color: var(--doux); font-size: 13px; margin-top: 4px; }
+  .note { margin-top: 8px; padding: 7px 10px; background: var(--fond); border-radius: 6px; font-size: 14px; }
+  .pastille { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 20px; padding: 2px 9px; margin-top: 8px; }
+  .pastille.echec { background: var(--rouge-fond); color: #8E1109; }
+  .pastille.neuf { background: #E6EEF8; color: var(--navy); }
+  a.carte.fait { border-left: 4px solid var(--vert); }
+  a.carte.fait .objet { font-size: 15px; }
+  .vide { background: var(--surface); border: 1px dashed var(--bord); border-radius: 10px; padding: 22px 16px;
+    text-align: center; color: var(--doux); }
+  .message { padding: 12px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 15px;
+    background: #fff; border-left: 4px solid var(--navy); }
+  .installer { background: var(--navy); color: #fff; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+  .installer strong { display: block; font-size: 16px; margin-bottom: 4px; }
+  .installer p { margin: 0; font-size: 14px; line-height: 1.4; opacity: .92; }
+  .installer button { margin-top: 10px; width: 100%; background: #fff; color: var(--navy); border: 0;
+    border-radius: 8px; padding: 12px; font-size: 16px; font-weight: 700; font-family: inherit; }
+  @media (display-mode: standalone) { .installer { display: none; } }
+  .etat { background: var(--surface); border: 1px solid var(--bord); border-radius: 10px; text-align: center; padding: 26px 16px; }
+  .etat .grand { font-size: 44px; line-height: 1; }
+  .etat h2 { color: var(--navy); font-size: 19px; letter-spacing: 0; text-transform: none; margin: 10px 0 6px; }
+  footer { text-align: center; color: var(--doux); font-size: 12px; padding: 10px 16px 30px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="marque">W A K A T I</div>
+  <div class="slogan">NDUWO UWO</div>
+  <div class="ligne">
+    <div>
+      <h1>Mes remises</h1>
+      {% if c %}<div class="qui">{{ c.nom }}</div>{% endif %}
+    </div>
+    {% if c %}<button type="button" onclick="location.replace(location.pathname)">↻ Actualiser</button>{% endif %}
+  </div>
+</header>
+
+<main>
+{% if not c %}
+  <div class="etat"><div class="grand">⚠</div>
+    <h2>Accès fermé</h2>
+    <p>Ce lien n'est plus valide. Demandez un nouveau QR code d'installation au service courrier.</p></div>
+{% else %}
+  {% if message %}<div class="message" role="status">{{ message }}</div>{% endif %}
+
+  <div class="installer" id="installer">
+    <strong>Installer l'application</strong>
+    <p id="aide_install">Ouvrez le menu ⋮ du navigateur, puis « Ajouter à l'écran d'accueil ».</p>
+    <button type="button" id="bouton_install" hidden>Installer sur ce téléphone</button>
+  </div>
+
+  <div class="compteurs">
+    <div class="compteur"><div class="n">{{ a_remettre|length }}</div><div class="l">à remettre</div></div>
+    <div class="compteur fait"><div class="n">{{ remis_jour }}</div><div class="l">remis aujourd'hui</div></div>
+  </div>
+
+  <h2>À remettre</h2>
+  {% for r in a_remettre %}
+  <a class="carte" href="{{ url_for('remise_public.page', jeton=r.jeton, c=jeton) }}">
+    <div class="objet">{{ r.objet }}</div>
+    <div class="dest">{{ r.organisation or (r.destinataire|first) }}</div>
+    {% if r.adresse %}<div class="meta">{{ r.adresse|join(', ') }}</div>{% endif %}
+    {% if r.note %}<div class="note">{{ r.note }}</div>{% endif %}
+    {% if r.nb_echecs %}
+      <span class="pastille echec">{{ r.nb_echecs }} tentative{{ 's' if r.nb_echecs > 1 }} — {{ (r.tentatives_aff|last).motif_lib }}</span>
+    {% else %}
+      <span class="pastille neuf">Confié le {{ r.cree_affiche }}</span>
+    {% endif %}
+  </a>
+  {% else %}
+  <div class="vide">Aucun courrier à remettre pour l'instant.</div>
+  {% endfor %}
+
+  {% if remis %}
+  <h2>Remis ces 7 derniers jours</h2>
+  {% for r in remis %}
+  <a class="carte fait" href="{{ url_for('remise_public.page', jeton=r.jeton, c=jeton) }}">
+    <div class="objet">{{ r.objet }}</div>
+    <div class="meta">Remis à {{ r.remise.nom }}{% if r.remise.fonction %} ({{ r.remise.fonction }}){% endif %} — {{ r.remis_affiche }}</div>
+  </a>
+  {% endfor %}
+  {% endif %}
+{% endif %}
+</main>
+
+<footer>Huri Money SA — WAKATI Mobile Money | Union des Comores<br>Application personnelle : ne partagez pas ce lien.</footer>
+
+{% if c %}
+<script>
+(function () {
+  // Installation : bouton natif quand le navigateur le propose, sinon consigne adaptée.
+  var bouton = document.getElementById('bouton_install'), aide = document.getElementById('aide_install');
+  var invite = null;
+  var ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (ios) { aide.textContent = 'Dans Safari : bouton Partager, puis « Sur l’écran d’accueil ».'; }
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); invite = e; bouton.hidden = false;
+    aide.textContent = 'L’icône WAKATI Remises s’ajoute à l’écran d’accueil : vos courriers en un geste.';
+  });
+  bouton.addEventListener('click', function () {
+    if (!invite) { return; }
+    invite.prompt();
+    invite.userChoice.then(function () { invite = null; bouton.hidden = true; });
+  });
+  window.addEventListener('appinstalled', function () { document.getElementById('installer').hidden = true; });
+  if (window.navigator.standalone) { document.getElementById('installer').hidden = true; }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("{{ url_for('remise_public.service_worker') }}", {scope: '/r/'}).catch(function () {});
+  }
+
+  // La liste se met à jour quand on revient sur l'application, et toutes les 2 minutes.
+  var charge = Date.now();
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && Date.now() - charge > 20000) { location.replace(location.pathname); }
+  });
+  setInterval(function () { if (!document.hidden) { location.replace(location.pathname); } }, 120000);
+})();
+</script>
+{% endif %}
+</body>
+</html>

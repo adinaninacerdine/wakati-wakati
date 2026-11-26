@@ -286,11 +286,12 @@
             <form method="POST" action="{{ url_for('remises.creer') }}">
               <input type="hidden" name="ref" value="{{ rep.ref }}">
               <div class="champ"><label for="rm_coursier">Coursier</label>
-                <input type="text" id="rm_coursier" name="coursier" placeholder="Nom du coursier (facultatif)"></div>
+                <input type="text" id="rm_coursier" name="coursier" list="rm_liste_coursiers" placeholder="Nom du coursier (facultatif)">
+                <datalist id="rm_liste_coursiers">{% if coursiers_remise is defined %}{% for c in coursiers_remise() %}<option value="{{ c.nom }}">{% endfor %}{% endif %}</datalist></div>
               <div class="champ"><label for="rm_note">Consigne</label>
                 <input type="text" id="rm_note" name="note" placeholder="Remettre au secrétariat du destinataire"></div>
               <button type="submit" class="mineur">Créer le bordereau de remise</button>
-              <p class="aide">Le coursier scanne le QR code ; le destinataire signe sur son téléphone. L'accusé s'ajoute à l'historique.</p>
+              <p class="aide">Le courrier apparaît dans l'application « Mes remises » du coursier (ou il scanne le QR code) ; le destinataire signe sur son téléphone. L'accusé s'ajoute à l'historique.</p>
             </form>
             {% endif %}
           </div>
